@@ -1,7 +1,7 @@
 /**
  * 🐶🦴TOP v1.5.2
  * 新增：安卓后台系统通知
- * 修复：右侧吸附后点击展开
+ * 修复：关于弹窗居中 / 右侧吸附展开
  */
 
 (function () {
@@ -424,8 +424,11 @@
             hd.innerHTML = `<span class="logo">🐶🦴</span><span class="name">🐶🦴TOP</span><span class="ver">v1.5.2</span>`;
             panel.appendChild(hd);
             panel.appendChild(Object.assign(document.createElement('div'), { className: 'dog-divider-v2' }));
+
             panel.appendChild(row('linear-gradient(135deg,#667eea,#764ba2)', settings.soundEnabled ? '🔊' : '🔇', '提示音', settings.soundEnabled ? '回复完成叮咚' : '已静音', () => { settings.soundEnabled = !settings.soundEnabled; saveSettings(); showToast(settings.soundEnabled ? '🔊 已开启' : '🔇 已关闭'); if (settings.soundEnabled) playSound(); syncToExtPanel(); }, settings.soundEnabled ? '<span class="dog-badge-on">ON</span>' : '<span class="dog-badge-off">OFF</span>'));
+
             panel.appendChild(row('linear-gradient(135deg,#ff6b6b,#ee5a6f)', settings.translateEnabled ? '🌐' : '🚫', '划词翻译', settings.translateEnabled ? '选中文字弹出翻译' : '已禁用', () => { settings.translateEnabled = !settings.translateEnabled; saveSettings(); showToast(settings.translateEnabled ? '🌐 已开启' : '🚫 已关闭'); syncToExtPanel(); }, settings.translateEnabled ? '<span class="dog-badge-on">ON</span>' : '<span class="dog-badge-off">OFF</span>'));
+
             panel.appendChild(row('linear-gradient(135deg,#43e97b,#38f9d7)', settings.notificationEnabled ? '🔔' : '🔕', '后台通知', settings.notificationEnabled ? '后台推送系统通知' : '已禁用', () => {
                 settings.notificationEnabled = !settings.notificationEnabled;
                 saveSettings();
@@ -437,11 +440,16 @@
                 }
                 syncToExtPanel();
             }, settings.notificationEnabled ? '<span class="dog-badge-on">ON</span>' : '<span class="dog-badge-off">OFF</span>'));
+
             panel.appendChild(Object.assign(document.createElement('div'), { className: 'dog-divider-v2' }));
+
             panel.appendChild(row('linear-gradient(135deg,#eb3349,#f45c43)', '🩺', '错误码翻译', '字典+机翻 解析报错', showErrorTranslate));
             panel.appendChild(row('linear-gradient(135deg,#f093fb,#f5576c)', '🔖', '生成卡片', '选中AI文字后弹出', () => showToast('💡 先选中AI消息文字\n再点弹出的"生成卡片"', 3500)));
+
             panel.appendChild(Object.assign(document.createElement('div'), { className: 'dog-divider-v2' }));
+
             panel.appendChild(row('linear-gradient(135deg,#fa709a,#fee140)', '🎵', '测试提示音', '试听叮咚声', () => { if (!settings.soundEnabled) { showToast('🔇 声音已关闭'); return; } playSound(); showToast('🎵 叮咚~'); }));
+
             panel.appendChild(row('linear-gradient(135deg,#a18cd1,#fbc2eb)', '🔔', '测试通知', '发一条测试通知', () => {
                 if (!settings.notificationEnabled) { showToast('🔕 后台通知已关闭'); return; }
                 if (!('Notification' in window)) { showToast('❌ 此浏览器不支持通知', 3000); return; }
@@ -456,6 +464,7 @@
                     showToast('✅ 测试通知已发送！\n检查通知栏看看', 3000);
                 } catch (e) { showToast('❌ 发送失败：' + e.message, 3500); }
             }));
+
             panel.appendChild(row('linear-gradient(135deg,#11998e,#38ef7d)', 'ℹ️', '关于', '查看插件信息', showAboutDialog));
         }
 
@@ -539,7 +548,18 @@
 
     function showAboutDialog() {
         const wrapper = document.createElement('div'); wrapper.className = 'dog-modal-wrapper';
-        wrapper.innerHTML = `<div class="dog-modal-panel"><div style="font-size:32px;text-align:center;margin-bottom:8px;">🐶🦴</div><div style="font-size:19px;font-weight:700;text-align:center;margin-bottom:6px;color:#fff;">🐶🦴TOP</div><div style="font-size:12px;color:rgba(255,255,255,0.55);text-align:center;margin-bottom:18px;">v1.5.2 · 跨平台增强插件</div><div class="dog-about-card"><b>🐾 玻璃拟态菜单</b><br/>可拖动 / 边缘吸附 / 位置记忆</div><div class="dog-about-card"><b>🔔 后台系统通知</b><br/>退到后台也能收到AI回复提醒（安卓）</div><div class="dog-about-card"><b>🩺 错误码字典翻译</b><br/>40+ 内置规则 + 机翻兜底</div><div class="dog-about-card"><b>🔖 选中即生成卡片</b><br/>6种风格精美海报</div><div class="dog-about-card"><b>🌐 划词翻译</b><br/>微软Edge引擎</div><div class="dog-about-card"><b>🔊 智能AI提示音</b><br/>完成/截断/空回三种提醒</div><button class="dog-cancel-btn" id="dog-about-close">关闭</button></div>`;
+        wrapper.innerHTML = `<div class="dog-modal-panel" style="max-width:380px;max-height:70vh;overflow-y:auto;">
+            <div style="font-size:32px;text-align:center;margin-bottom:8px;">🐶🦴</div>
+            <div style="font-size:19px;font-weight:700;text-align:center;margin-bottom:6px;color:#fff;">🐶🦴TOP</div>
+            <div style="font-size:12px;color:rgba(255,255,255,0.55);text-align:center;margin-bottom:18px;">v1.5.2 · 跨平台增强插件</div>
+            <div class="dog-about-card"><b>🐾 玻璃拟态菜单</b><br/>可拖动 / 边缘吸附 / 位置记忆</div>
+            <div class="dog-about-card"><b>🔔 后台系统通知</b><br/>退到后台也能收到AI回复提醒（安卓）</div>
+            <div class="dog-about-card"><b>🩺 错误码字典翻译</b><br/>40+ 内置规则 + 机翻兜底</div>
+            <div class="dog-about-card"><b>🔖 选中即生成卡片</b><br/>6种风格精美海报</div>
+            <div class="dog-about-card"><b>🌐 划词翻译</b><br/>微软Edge引擎</div>
+            <div class="dog-about-card"><b>🔊 智能AI提示音</b><br/>完成/截断/空回三种提醒</div>
+            <button class="dog-cancel-btn" id="dog-about-close">关闭</button>
+        </div>`;
         document.body.appendChild(wrapper);
         wrapper.addEventListener('click', (e) => { if (e.target === wrapper) wrapper.remove(); });
         wrapper.querySelector('#dog-about-close').onclick = () => wrapper.remove();
@@ -659,7 +679,6 @@
                     const ms2 = manualStop === true;
                     const r = window._dogFinishReason || 'unknown';
 
-                    // 获取角色名用于通知
                     let charName = '';
                     try {
                         const nameEl = document.querySelector('.mes:last-of-type .ch_name .name_text') ||
@@ -668,8 +687,6 @@
                         if (!charName && c2.name2) charName = c2.name2;
                     } catch (e) {}
                     const namePrefix = charName ? `${charName}：` : '';
-
-                    // 截取回复预览（用于通知内容）
                     const previewText = t.length > 80 ? t.slice(0, 80) + '...' : t;
 
                     if (t === '') {
