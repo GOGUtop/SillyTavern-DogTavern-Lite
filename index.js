@@ -1,10 +1,7 @@
 /**
- * 🐶🦴TOP v1.5.1
- * 修复：
- *  1. 右侧吸附后点击无法展开菜单
- *  2. 点击后瞬移到左侧
- *  3. 吸附改用 transform 实现，不改变逻辑位置
- *  4. 展开菜单时临时取消吸附偏移，关闭后恢复
+ * 🐶🦴TOP v1.5.2
+ * 新增：安卓后台系统通知
+ * 修复：右侧吸附后点击展开
  */
 
 (function () {
@@ -18,7 +15,8 @@
     const defaultSettings = {
         soundEnabled: true,
         translateEnabled: true,
-        floatEnabled: true
+        floatEnabled: true,
+        notificationEnabled: true
     };
     let settings = { ...defaultSettings };
     try {
@@ -33,18 +31,64 @@
     let lastErrorTime = 0;
 
     // ====================================================
+    // 系统通知
+    // ====================================================
+    let notificationPermission = 'default';
+
+    function requestNotificationPermission() {
+        if (!('Notification' in window)) return;
+        if (Notification.permission === 'granted') {
+            notificationPermission = 'granted';
+            return;
+        }
+        if (Notification.permission !== 'denied') {
+            Notification.requestPermission().then(perm => {
+                notificationPermission = perm;
+                if (perm === 'granted') {
+                    showToast('🔔 通知权限已获取！\n后台也能收到提醒了', 3000);
+                }
+            });
+        }
+    }
+
+    function sendSystemNotification(title, body) {
+        if (!settings.notificationEnabled) return;
+        if (document.visibilityState === 'visible') return;
+        if (!('Notification' in window)) return;
+        if (Notification.permission !== 'granted') return;
+        try {
+            const notification = new Notification(title, {
+                body: body,
+                icon: 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><text y=".9em" font-size="90">🐶</text></svg>',
+                tag: 'dog-top-' + Date.now(),
+                requireInteraction: false,
+                silent: false
+            });
+            notification.onclick = () => {
+                window.focus();
+                notification.close();
+            };
+            setTimeout(() => {
+                try { notification.close(); } catch (e) {}
+            }, 8000);
+        } catch (e) {
+            console.warn('[DogTop] 通知失败:', e);
+        }
+    }
+
+    // ====================================================
     // 错误码字典
     // ====================================================
     const ERROR_DICT = [
         { re: /HTTP\s*401|unauthorized|invalid[_\s-]?api[_\s-]?key|incorrect api key/i, tag: '🔑 密钥错误', level: 'err', cn: 'API 密钥无效或已失效', fix: '检查 API Key 是否填错、是否过期、是否多了空格。重新去服务商后台复制一次。' },
-        { re: /HTTP\s*402|insufficient[_\s]?quota|insufficient[_\s]?balance|billing|credit/i, tag: '💰 余额不足', level: 'err', cn: '账户余额不足或配额用完', fix: '去 API 服务商（OpenAI / 中转站）后台充值；或换一个有余额的 Key。' },
+        { re: /HTTP\s*402|insufficient[_\s]?quota|insufficient[_\s]?balance|billing|credit/i, tag: '💰 余额不足', level: 'err', cn: '账户余额不足或配额用完', fix: '去 API 服务商后台充值；或换一个有余额的 Key。' },
         { re: /HTTP\s*403|forbidden|permission[_\s]?denied|access[_\s]?denied/i, tag: '🚫 无权限', level: 'err', cn: '请求被拒绝', fix: '检查 Key 权限范围；OpenAI 要挂代理；中转站可能限制了你的 IP。' },
         { re: /HTTP\s*404|model[_\s]?not[_\s]?found|no available channel for model/i, tag: '❓ 模型未找到', level: 'err', cn: '请求的模型不存在或当前渠道不支持', fix: '① 检查模型名拼写\n② 中转站可能没开通该模型' },
-        { re: /HTTP\s*429|rate[_\s]?limit|too many requests/i, tag: '🐢 请求过快', level: 'warn', cn: '请求频率超限', fix: '等待几秒重试；降低请求频率；或换其他 Key 轮询。' },
+        { re: /HTTP\s*429|rate[_\s]?limit|too many requests/i, tag: '🐢 请求过快', level: 'warn', cn: '请求频率超限', fix: '等待几秒重试；降低请求频率；或换其他 Key。' },
         { re: /HTTP\s*500|internal[_\s]?server[_\s]?error/i, tag: '💥 服务器爆炸', level: 'err', cn: '服务端 500 错误', fix: '等几分钟重试。' },
         { re: /HTTP\s*502|bad[_\s]?gateway/i, tag: '🌐 网关错误', level: 'err', cn: '中间网关挂了', fix: '等等再试或换渠道。' },
-        { re: /HTTP\s*503|service[_\s]?unavailable|overloaded/i, tag: '⚠️ 服务过载', level: 'err', cn: '服务暂时不可用', fix: '等30秒重试；或切到备用渠道。' },
-        { re: /HTTP\s*504|gateway[_\s]?timeout|timeout/i, tag: '⏰ 超时', level: 'warn', cn: '请求超时', fix: '减少历史消息、降低 max_tokens；或换个更快的渠道。' },
+        { re: /HTTP\s*503|service[_\s]?unavailable|overloaded/i, tag: '⚠️ 服务过载', level: 'err', cn: '服务暂时不可用', fix: '等30秒重试；或切备用渠道。' },
+        { re: /HTTP\s*504|gateway[_\s]?timeout|timeout/i, tag: '⏰ 超时', level: 'warn', cn: '请求超时', fix: '减少历史消息、降低 max_tokens；或换更快的渠道。' },
         { re: /content[_\s]?policy|content[_\s]?filter|safety|usage policies/i, tag: '🛡️ 内容审核', level: 'err', cn: '内容触发审核', fix: '① 修改触发词\n② 换不审核的模型' },
         { re: /context[_\s]?length[_\s]?exceeded|maximum context length|too many tokens/i, tag: '📏 上下文超长', level: 'err', cn: 'token 数超过限制', fix: '① 减少世界书/角色卡\n② 降低历史层数\n③ 换大窗口模型' },
         { re: /invalid[_\s]?request[_\s]?error|invalid_parameter/i, tag: '📝 参数错误', level: 'err', cn: '请求参数格式有误', fix: '检查 temperature/top_p 是否超范围。' },
@@ -289,7 +333,7 @@
     }
 
     // ====================================================
-    // 🐾 悬浮球 — 核心修复版
+    // 🐾 悬浮球
     // ====================================================
     let folderEl = null;
     let currentSnappedSide = 'right';
@@ -299,43 +343,28 @@
     function showFloatingMenu() { if (folderEl) { folderEl.style.display = ''; return; } injectFloatingMenu(); }
     function hideFloatingMenu() { if (folderEl) folderEl.style.display = 'none'; }
 
-    /**
-     * 核心：设置悬浮球位置
-     * 不使用 left/right 定位，统一用 left + transform 实现吸附
-     */
     function applySnap(animate) {
         if (!folderEl) return;
         const ballSize = 54;
-
         if (animate) {
-            folderEl.style.transition = 'left 0.3s ease, transform 0.3s ease';
+            folderEl.style.transition = 'left 0.3s ease';
         } else {
             folderEl.style.transition = 'none';
         }
-
         if (currentSnappedSide === 'right') {
-            // 球的左边缘在屏幕右边缘 - ballSize/2 的位置（露出50%）
             folderEl.style.left = (window.innerWidth - ballSize / 2) + 'px';
-            folderEl.style.right = 'auto';
-            folderEl.style.transform = 'none';
         } else {
-            // 球的左边缘在 -ballSize/2 的位置（露出50%）
             folderEl.style.left = (-ballSize / 2) + 'px';
-            folderEl.style.right = 'auto';
-            folderEl.style.transform = 'none';
         }
+        folderEl.style.right = 'auto';
+        folderEl.style.transform = 'none';
     }
 
-    /**
-     * 展开菜单时，把球完全移出来（不藏一半）
-     */
     function applyExpanded() {
         if (!folderEl) return;
         const ballSize = 54;
-        const margin = 8; // 离屏幕边缘的距离
-
+        const margin = 8;
         folderEl.style.transition = 'left 0.2s ease';
-
         if (currentSnappedSide === 'right') {
             folderEl.style.left = (window.innerWidth - ballSize - margin) + 'px';
         } else {
@@ -344,12 +373,7 @@
     }
 
     function savePosition() {
-        try {
-            localStorage.setItem(POS_KEY, JSON.stringify({
-                top: currentTop,
-                side: currentSnappedSide
-            }));
-        } catch (e) {}
+        try { localStorage.setItem(POS_KEY, JSON.stringify({ top: currentTop, side: currentSnappedSide })); } catch (e) {}
     }
 
     function injectFloatingMenu() {
@@ -358,7 +382,6 @@
             return;
         }
 
-        // 加载保存的位置
         try {
             const saved = JSON.parse(localStorage.getItem(POS_KEY) || 'null');
             if (saved) {
@@ -366,17 +389,13 @@
                 if (saved.side === 'left' || saved.side === 'right') currentSnappedSide = saved.side;
             }
         } catch (e) {}
-
         if (currentTop === null) currentTop = window.innerHeight * 0.45;
 
         const folder = document.createElement('div');
         folder.setAttribute('data-dog-tool-folder', '1');
         folder.className = 'dog-folder-v2';
         folderEl = folder;
-
-        // 设置初始纵向位置
         folder.style.top = currentTop + 'px';
-        // 应用吸附
         applySnap(false);
 
         const trigger = document.createElement('div');
@@ -395,26 +414,48 @@
 
         function buildPanel() {
             panel.innerHTML = '';
-
-            // 根据吸附方向设置面板弹出方向
             panel.classList.remove('panel-left', 'panel-right');
             if (currentSnappedSide === 'left') {
                 panel.classList.add('panel-left');
             } else {
                 panel.classList.add('panel-right');
             }
-
             const hd = document.createElement('div'); hd.className = 'dog-header-v2';
-            hd.innerHTML = `<span class="logo">🐶🦴</span><span class="name">🐶🦴TOP</span><span class="ver">v1.5.1</span>`;
+            hd.innerHTML = `<span class="logo">🐶🦴</span><span class="name">🐶🦴TOP</span><span class="ver">v1.5.2</span>`;
             panel.appendChild(hd);
             panel.appendChild(Object.assign(document.createElement('div'), { className: 'dog-divider-v2' }));
             panel.appendChild(row('linear-gradient(135deg,#667eea,#764ba2)', settings.soundEnabled ? '🔊' : '🔇', '提示音', settings.soundEnabled ? '回复完成叮咚' : '已静音', () => { settings.soundEnabled = !settings.soundEnabled; saveSettings(); showToast(settings.soundEnabled ? '🔊 已开启' : '🔇 已关闭'); if (settings.soundEnabled) playSound(); syncToExtPanel(); }, settings.soundEnabled ? '<span class="dog-badge-on">ON</span>' : '<span class="dog-badge-off">OFF</span>'));
             panel.appendChild(row('linear-gradient(135deg,#ff6b6b,#ee5a6f)', settings.translateEnabled ? '🌐' : '🚫', '划词翻译', settings.translateEnabled ? '选中文字弹出翻译' : '已禁用', () => { settings.translateEnabled = !settings.translateEnabled; saveSettings(); showToast(settings.translateEnabled ? '🌐 已开启' : '🚫 已关闭'); syncToExtPanel(); }, settings.translateEnabled ? '<span class="dog-badge-on">ON</span>' : '<span class="dog-badge-off">OFF</span>'));
+            panel.appendChild(row('linear-gradient(135deg,#43e97b,#38f9d7)', settings.notificationEnabled ? '🔔' : '🔕', '后台通知', settings.notificationEnabled ? '后台推送系统通知' : '已禁用', () => {
+                settings.notificationEnabled = !settings.notificationEnabled;
+                saveSettings();
+                if (settings.notificationEnabled) {
+                    requestNotificationPermission();
+                    showToast('🔔 后台通知已开启\n退到后台也能收到提醒了', 3000);
+                } else {
+                    showToast('🔕 后台通知已关闭');
+                }
+                syncToExtPanel();
+            }, settings.notificationEnabled ? '<span class="dog-badge-on">ON</span>' : '<span class="dog-badge-off">OFF</span>'));
             panel.appendChild(Object.assign(document.createElement('div'), { className: 'dog-divider-v2' }));
             panel.appendChild(row('linear-gradient(135deg,#eb3349,#f45c43)', '🩺', '错误码翻译', '字典+机翻 解析报错', showErrorTranslate));
             panel.appendChild(row('linear-gradient(135deg,#f093fb,#f5576c)', '🔖', '生成卡片', '选中AI文字后弹出', () => showToast('💡 先选中AI消息文字\n再点弹出的"生成卡片"', 3500)));
             panel.appendChild(Object.assign(document.createElement('div'), { className: 'dog-divider-v2' }));
             panel.appendChild(row('linear-gradient(135deg,#fa709a,#fee140)', '🎵', '测试提示音', '试听叮咚声', () => { if (!settings.soundEnabled) { showToast('🔇 声音已关闭'); return; } playSound(); showToast('🎵 叮咚~'); }));
+            panel.appendChild(row('linear-gradient(135deg,#a18cd1,#fbc2eb)', '🔔', '测试通知', '发一条测试通知', () => {
+                if (!settings.notificationEnabled) { showToast('🔕 后台通知已关闭'); return; }
+                if (!('Notification' in window)) { showToast('❌ 此浏览器不支持通知', 3000); return; }
+                if (Notification.permission === 'denied') { showToast('❌ 通知权限被拒绝\n请在浏览器设置中手动开启', 4000); return; }
+                if (Notification.permission !== 'granted') { requestNotificationPermission(); showToast('📝 正在请求通知权限...', 2500); return; }
+                try {
+                    new Notification('🐶🦴TOP 测试通知', {
+                        body: '如果你看到这条通知，说明后台通知功能正常！退到后台也能收到AI回复提醒了～',
+                        icon: 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><text y=".9em" font-size="90">🐶</text></svg>',
+                        tag: 'dog-top-test'
+                    });
+                    showToast('✅ 测试通知已发送！\n检查通知栏看看', 3000);
+                } catch (e) { showToast('❌ 发送失败：' + e.message, 3500); }
+            }));
             panel.appendChild(row('linear-gradient(135deg,#11998e,#38ef7d)', 'ℹ️', '关于', '查看插件信息', showAboutDialog));
         }
 
@@ -422,13 +463,9 @@
             isMenuOpen = true;
             trigger.classList.add('open');
             trigger.textContent = '✕';
-            // 先把球完全移出来
             applyExpanded();
             buildPanel();
-            // 等位移动画完成后再显示面板
-            setTimeout(() => {
-                panel.classList.add('show');
-            }, 220);
+            setTimeout(() => { panel.classList.add('show'); }, 220);
         }
 
         function collapse() {
@@ -436,13 +473,9 @@
             trigger.classList.remove('open');
             trigger.textContent = '🐾';
             panel.classList.remove('show');
-            // 面板关闭动画结束后，吸附回去
-            setTimeout(() => {
-                applySnap(true);
-            }, 200);
+            setTimeout(() => { applySnap(true); }, 200);
         }
 
-        // 拖拽逻辑
         let dragMoved = false, dragging = false;
         let startX = 0, startY = 0, startTop2 = 0, startLeft2 = 0;
 
@@ -451,13 +484,11 @@
             startX = cx; startY = cy;
             const rect = folder.getBoundingClientRect();
             startTop2 = rect.top; startLeft2 = rect.left;
-            // 拖动时直接用 left 定位，取消 transition
             folder.style.transition = 'none';
             folder.style.left = rect.left + 'px';
             folder.style.right = 'auto';
             folder.style.transform = 'none';
         }
-
         function dragMove(cx, cy) {
             if (!dragging) return;
             const dx = cx - startX, dy = cy - startY;
@@ -471,7 +502,6 @@
                 if (isMenuOpen) collapse();
             }
         }
-
         function dragEnd() {
             if (!dragging) return;
             dragging = false;
@@ -480,13 +510,11 @@
                 const centerX = rect.left + rect.width / 2;
                 currentTop = Math.max(0, Math.min(window.innerHeight - rect.height, rect.top));
                 folder.style.top = currentTop + 'px';
-
                 if (centerX < window.innerWidth / 2) {
                     currentSnappedSide = 'left';
                 } else {
                     currentSnappedSide = 'right';
                 }
-
                 applySnap(true);
                 savePosition();
             }
@@ -499,7 +527,6 @@
         document.addEventListener('mousemove', (e) => { if (dragging) dragMove(e.clientX, e.clientY); });
         document.addEventListener('mouseup', () => { if (!dragging) return; const m = dragMoved; dragEnd(); if (!m && !('ontouchstart' in window)) { isMenuOpen ? collapse() : expand(); } });
 
-        // 窗口大小变化时重新吸附
         window.addEventListener('resize', () => {
             if (!isMenuOpen) applySnap(false);
         });
@@ -512,7 +539,7 @@
 
     function showAboutDialog() {
         const wrapper = document.createElement('div'); wrapper.className = 'dog-modal-wrapper';
-        wrapper.innerHTML = `<div class="dog-modal-panel"><div style="font-size:32px;text-align:center;margin-bottom:8px;">🐶🦴</div><div style="font-size:19px;font-weight:700;text-align:center;margin-bottom:6px;color:#fff;">🐶🦴TOP</div><div style="font-size:12px;color:rgba(255,255,255,0.55);text-align:center;margin-bottom:18px;">v1.5.1 · 跨平台增强插件</div><div class="dog-about-card"><b>🐾 玻璃拟态菜单</b><br/>可拖动 / 边缘吸附50% / 位置记忆</div><div class="dog-about-card"><b>🩺 错误码字典翻译</b><br/>40+ 内置规则 + 机翻兜底</div><div class="dog-about-card"><b>🔖 选中即生成卡片</b><br/>6种风格精美海报</div><div class="dog-about-card"><b>🌐 划词翻译</b><br/>微软Edge引擎</div><div class="dog-about-card"><b>🔊 智能AI提示音</b><br/>完成/截断/空回三种提醒</div><button class="dog-cancel-btn" id="dog-about-close">关闭</button></div>`;
+        wrapper.innerHTML = `<div class="dog-modal-panel"><div style="font-size:32px;text-align:center;margin-bottom:8px;">🐶🦴</div><div style="font-size:19px;font-weight:700;text-align:center;margin-bottom:6px;color:#fff;">🐶🦴TOP</div><div style="font-size:12px;color:rgba(255,255,255,0.55);text-align:center;margin-bottom:18px;">v1.5.2 · 跨平台增强插件</div><div class="dog-about-card"><b>🐾 玻璃拟态菜单</b><br/>可拖动 / 边缘吸附 / 位置记忆</div><div class="dog-about-card"><b>🔔 后台系统通知</b><br/>退到后台也能收到AI回复提醒（安卓）</div><div class="dog-about-card"><b>🩺 错误码字典翻译</b><br/>40+ 内置规则 + 机翻兜底</div><div class="dog-about-card"><b>🔖 选中即生成卡片</b><br/>6种风格精美海报</div><div class="dog-about-card"><b>🌐 划词翻译</b><br/>微软Edge引擎</div><div class="dog-about-card"><b>🔊 智能AI提示音</b><br/>完成/截断/空回三种提醒</div><button class="dog-cancel-btn" id="dog-about-close">关闭</button></div>`;
         document.body.appendChild(wrapper);
         wrapper.addEventListener('click', (e) => { if (e.target === wrapper) wrapper.remove(); });
         wrapper.querySelector('#dog-about-close').onclick = () => wrapper.remove();
@@ -548,30 +575,160 @@
         pd.querySelectorAll('.dog-poster-btn').forEach(b => { b.onclick = () => { const si = parseInt(b.getAttribute('data-style')); const nn = mes.querySelector('.ch_name .name_text') || mes.querySelector('.name_text') || mes.querySelector('.ch_name'); const cn = nn ? (nn.innerText || nn.textContent || '').trim() : ''; const ai = mes.querySelector('.avatar img') || mes.querySelector('img.avatar') || mes.querySelector('img'); const au = ai ? (ai.src || '') : ''; generateCard(text, cn, au, si); wrapper.remove(); }; });
     }
 
-    // ============ AI 生成事件 ============
+    // ============ AI 生成事件（含系统通知） ============
     function attachGenerationHooks() {
         let manualStop = false, finishReason = 'unknown';
-        if (!window._dogFetchHooked) { window._dogFetchHooked = true; const origFetch = window.fetch; window.fetch = async function () { const u = (typeof arguments[0] === 'string') ? arguments[0] : (arguments[0] && arguments[0].url ? arguments[0].url : ''); const isGen = u.indexOf('generate') >= 0 || u.indexOf('completions') >= 0 || u.indexOf('chat') >= 0; if (isGen) finishReason = 'unknown'; const res = await origFetch.apply(this, arguments); if (isGen && res.body && res.clone) { const c = res.clone(); (async () => { try { const r = c.body.getReader(); const d = new TextDecoder('utf-8'); let done = false; while (!done) { const x = await r.read(); done = x.done; if (x.value) { const ck = d.decode(x.value, { stream: true }); if (ck.includes('"finish_reason":"length"')) finishReason = 'length'; else if (ck.includes('"finish_reason":"stop"') || ck.includes('"finish_reason":"eos_token"')) finishReason = 'stop'; } } window._dogFinishReason = finishReason; } catch (e) {} })(); } return res; }; }
-        if (!window._dogErrorObserver) { window._dogErrorObserver = true; new MutationObserver((ms) => { ms.forEach(m => m.addedNodes.forEach(n => { if (n.nodeType === 1) { const et = (n.classList && n.classList.contains('toast-error')) ? n : (n.querySelector ? n.querySelector('.toast-error') : null); if (et && !et._dogHandled) { et._dogHandled = true; window._dogHasError = true; } } })); }).observe(document.body, { childList: true, subtree: true }); }
+
+        if (!window._dogFetchHooked) {
+            window._dogFetchHooked = true;
+            const origFetch = window.fetch;
+            window.fetch = async function () {
+                const u = (typeof arguments[0] === 'string') ? arguments[0] : (arguments[0] && arguments[0].url ? arguments[0].url : '');
+                const isGen = u.indexOf('generate') >= 0 || u.indexOf('completions') >= 0 || u.indexOf('chat') >= 0;
+                if (isGen) finishReason = 'unknown';
+                const res = await origFetch.apply(this, arguments);
+                if (isGen && res.body && res.clone) {
+                    const c = res.clone();
+                    (async () => {
+                        try {
+                            const r = c.body.getReader();
+                            const d = new TextDecoder('utf-8');
+                            let done = false;
+                            while (!done) {
+                                const x = await r.read();
+                                done = x.done;
+                                if (x.value) {
+                                    const ck = d.decode(x.value, { stream: true });
+                                    if (ck.includes('"finish_reason":"length"')) finishReason = 'length';
+                                    else if (ck.includes('"finish_reason":"stop"') || ck.includes('"finish_reason":"eos_token"')) finishReason = 'stop';
+                                }
+                            }
+                            window._dogFinishReason = finishReason;
+                        } catch (e) {}
+                    })();
+                }
+                return res;
+            };
+        }
+
+        if (!window._dogErrorObserver) {
+            window._dogErrorObserver = true;
+            new MutationObserver((ms) => {
+                ms.forEach(m => m.addedNodes.forEach(n => {
+                    if (n.nodeType === 1) {
+                        const et = (n.classList && n.classList.contains('toast-error')) ? n : (n.querySelector ? n.querySelector('.toast-error') : null);
+                        if (et && !et._dogHandled) { et._dogHandled = true; window._dogHasError = true; }
+                    }
+                }));
+            }).observe(document.body, { childList: true, subtree: true });
+        }
+
         const tryHook = () => {
             if (!window.SillyTavern || typeof window.SillyTavern.getContext !== 'function') return false;
-            const ctx = window.SillyTavern.getContext(); if (!ctx || !ctx.eventSource) return false; if (window._dogHooksAdded) return true; window._dogHooksAdded = true;
+            const ctx = window.SillyTavern.getContext();
+            if (!ctx || !ctx.eventSource) return false;
+            if (window._dogHooksAdded) return true;
+            window._dogHooksAdded = true;
+
             const es = ctx.eventSource;
-            es.on('generation_started', () => { manualStop = false; finishReason = 'unknown'; window._dogFinishReason = 'unknown'; window._dogHasError = false; });
-            es.on('generation_stopped', () => { manualStop = true; });
-            es.on('generation_ended', () => { Promise.resolve().then(() => { if (window._dogHasError) { window._dogHasError = false; return; } const c2 = window.SillyTavern.getContext(); const chat = (c2 && c2.chat) ? c2.chat : []; let t = ''; if (chat.length) { const am = chat.filter(m => m.is_user !== true); if (am.length) t = am[am.length - 1].mes || ''; } t = t.replace(/<[^>]+>/g, '').replace(/[\s\r\n\u200B-\u200D\uFEFF]+$/, ''); const ms2 = manualStop === true, r = window._dogFinishReason || 'unknown'; if (t === '') { showToast('😾 可恶的AI！空回了！', 3500); playSound(); return; } if (ms2 || r === 'length') { showToast('😭 被截断了汪', 3500); playSound(); return; } if (r === 'stop') { showToast('🎉 回复完毕汪！', 2500); playSound(); return; } const lc = t.slice(-1); if (['.','!','?','。','！','？','"','\u201d','\u2019','~','*',']',')','}','-','\u2026','`','_'].indexOf(lc) >= 0 || /(?:\ud83c[\udf00-\udfff])|(?:\ud83d[\udc00-\ude4f\ude80-\udeff])|[\u2600-\u2B55]/.test(lc)) showToast('🎉 回复完毕汪！', 2500); else showToast('😭 好像被截断了汪', 3000); playSound(); }); });
+
+            es.on('generation_started', () => {
+                manualStop = false;
+                finishReason = 'unknown';
+                window._dogFinishReason = 'unknown';
+                window._dogHasError = false;
+            });
+
+            es.on('generation_stopped', () => {
+                manualStop = true;
+            });
+
+            es.on('generation_ended', () => {
+                Promise.resolve().then(() => {
+                    if (window._dogHasError) { window._dogHasError = false; return; }
+
+                    const c2 = window.SillyTavern.getContext();
+                    const chat = (c2 && c2.chat) ? c2.chat : [];
+                    let t = '';
+                    if (chat.length) {
+                        const am = chat.filter(m => m.is_user !== true);
+                        if (am.length) t = am[am.length - 1].mes || '';
+                    }
+                    t = t.replace(/<[^>]+>/g, '').replace(/[\s\r\n\u200B-\u200D\uFEFF]+$/, '');
+
+                    const ms2 = manualStop === true;
+                    const r = window._dogFinishReason || 'unknown';
+
+                    // 获取角色名用于通知
+                    let charName = '';
+                    try {
+                        const nameEl = document.querySelector('.mes:last-of-type .ch_name .name_text') ||
+                                       document.querySelector('.mes:last-of-type .name_text');
+                        if (nameEl) charName = (nameEl.innerText || nameEl.textContent || '').trim();
+                        if (!charName && c2.name2) charName = c2.name2;
+                    } catch (e) {}
+                    const namePrefix = charName ? `${charName}：` : '';
+
+                    // 截取回复预览（用于通知内容）
+                    const previewText = t.length > 80 ? t.slice(0, 80) + '...' : t;
+
+                    if (t === '') {
+                        showToast('😾 可恶的AI！空回了！', 3500);
+                        playSound();
+                        sendSystemNotification('😾 AI空回了！', `${namePrefix}什么都没说就交卷了...`);
+                        return;
+                    }
+                    if (ms2 || r === 'length') {
+                        showToast('😭 被截断了汪', 3500);
+                        playSound();
+                        sendSystemNotification('😭 回复被截断了', `${namePrefix}${previewText}`);
+                        return;
+                    }
+                    if (r === 'stop') {
+                        showToast('🎉 回复完毕汪！', 2500);
+                        playSound();
+                        sendSystemNotification('🎉 回复完毕！', `${namePrefix}${previewText}`);
+                        return;
+                    }
+
+                    const lc = t.slice(-1);
+                    const ve = ['.','!','?','。','！','？','"','\u201d','\u2019','~','*',']',')','}','-','\u2026','`','_'];
+                    const emojiRe = /(?:\ud83c[\udf00-\udfff])|(?:\ud83d[\udc00-\ude4f\ude80-\udeff])|[\u2600-\u2B55]/;
+
+                    if (ve.indexOf(lc) >= 0 || emojiRe.test(lc)) {
+                        showToast('🎉 回复完毕汪！', 2500);
+                        playSound();
+                        sendSystemNotification('🎉 回复完毕！', `${namePrefix}${previewText}`);
+                    } else {
+                        showToast('😭 好像被截断了汪', 3000);
+                        playSound();
+                        sendSystemNotification('😭 可能被截断了', `${namePrefix}${previewText}`);
+                    }
+                });
+            });
+
             return true;
         };
-        if (!tryHook()) { const ob = new MutationObserver(() => { if (tryHook()) ob.disconnect(); }); ob.observe(document, { childList: true, subtree: true }); }
+
+        if (!tryHook()) {
+            const ob = new MutationObserver(() => { if (tryHook()) ob.disconnect(); });
+            ob.observe(document, { childList: true, subtree: true });
+        }
     }
 
     // ====================================================
-    // 🎛️ 注入扩展面板
+    // 🎛️ 扩展面板
     // ====================================================
     function injectExtensionPanel() {
         const targetContainer = document.getElementById('extensions_settings2') || document.getElementById('extensions_settings');
         if (!targetContainer) { console.warn('[DogTop] 容器未找到，重试...'); setTimeout(injectExtensionPanel, 1000); return; }
         if (document.getElementById('dog_top_settings')) return;
+
+        const notifSupported = ('Notification' in window);
+        const notifStatus = notifSupported
+            ? (Notification.permission === 'granted' ? '✅ 已授权' : (Notification.permission === 'denied' ? '❌ 被拒绝' : '📝 待授权'))
+            : '❌ 不支持';
+
         const settingsHtml = `
         <div id="dog_top_settings">
             <div class="inline-drawer">
@@ -586,7 +743,7 @@
                                 <input id="dog_top_float_toggle" type="checkbox" ${settings.floatEnabled ? 'checked' : ''} />
                                 <span>🐾 显示悬浮球</span>
                             </label>
-                            <small style="color:var(--SmartThemeQuoteColor);margin-left:26px;">开启后屏幕边缘显示工具悬浮球</small>
+                            <small style="color:var(--SmartThemeQuoteColor);margin-left:26px;">屏幕边缘显示工具悬浮球</small>
                         </div>
                         <div style="margin-bottom:14px;">
                             <label class="checkbox_label" style="display:flex;align-items:center;gap:8px;cursor:pointer;margin-bottom:4px;">
@@ -602,23 +759,54 @@
                             </label>
                             <small style="color:var(--SmartThemeQuoteColor);margin-left:26px;">选中文字后出现翻译按钮</small>
                         </div>
+                        <div style="margin-bottom:14px;">
+                            <label class="checkbox_label" style="display:flex;align-items:center;gap:8px;cursor:pointer;margin-bottom:4px;">
+                                <input id="dog_top_notif_toggle" type="checkbox" ${settings.notificationEnabled ? 'checked' : ''} />
+                                <span>🔔 后台系统通知</span>
+                            </label>
+                            <small style="color:var(--SmartThemeQuoteColor);margin-left:26px;">退到后台时推送系统通知（${notifStatus}）</small>
+                        </div>
                         <hr style="border:none;border-top:1px solid var(--SmartThemeBorderColor);margin:14px 0;" />
                         <div style="color:var(--SmartThemeQuoteColor);font-size:12px;line-height:1.6;">
-                            <p style="margin:0 0 4px;">🐶🦴TOP v1.5.1</p>
-                            <p style="margin:0;">悬浮球 / 卡片生成 / 错误码翻译 / 划词翻译 / AI提示音</p>
+                            <p style="margin:0 0 4px;">🐶🦴TOP v1.5.2</p>
+                            <p style="margin:0 0 4px;">悬浮球 / 卡片生成 / 错误码翻译 / 划词翻译 / AI提示音 / 后台通知</p>
+                            <p style="margin:0;">⚠️ 后台通知需要 HTTPS 且浏览器允许通知权限</p>
                         </div>
                     </div>
                 </div>
             </div>
         </div>`;
         targetContainer.insertAdjacentHTML('beforeend', settingsHtml);
+
         setTimeout(() => {
             const ft = document.getElementById('dog_top_float_toggle');
             const st2 = document.getElementById('dog_top_sound_toggle');
             const tt = document.getElementById('dog_top_translate_toggle');
-            if (ft) ft.addEventListener('change', (e) => { settings.floatEnabled = e.target.checked; saveSettings(); if (settings.floatEnabled) { showFloatingMenu(); showToast('🐾 悬浮球已开启'); } else { hideFloatingMenu(); showToast('🐾 悬浮球已关闭'); } });
-            if (st2) st2.addEventListener('change', (e) => { settings.soundEnabled = e.target.checked; saveSettings(); showToast(settings.soundEnabled ? '🔊 已开启' : '🔇 已关闭'); if (settings.soundEnabled) playSound(); });
-            if (tt) tt.addEventListener('change', (e) => { settings.translateEnabled = e.target.checked; saveSettings(); showToast(settings.translateEnabled ? '🌐 已开启' : '🚫 已关闭'); });
+            const nt = document.getElementById('dog_top_notif_toggle');
+
+            if (ft) ft.addEventListener('change', (e) => {
+                settings.floatEnabled = e.target.checked; saveSettings();
+                if (settings.floatEnabled) { showFloatingMenu(); showToast('🐾 悬浮球已开启'); }
+                else { hideFloatingMenu(); showToast('🐾 悬浮球已关闭'); }
+            });
+            if (st2) st2.addEventListener('change', (e) => {
+                settings.soundEnabled = e.target.checked; saveSettings();
+                showToast(settings.soundEnabled ? '🔊 已开启' : '🔇 已关闭');
+                if (settings.soundEnabled) playSound();
+            });
+            if (tt) tt.addEventListener('change', (e) => {
+                settings.translateEnabled = e.target.checked; saveSettings();
+                showToast(settings.translateEnabled ? '🌐 已开启' : '🚫 已关闭');
+            });
+            if (nt) nt.addEventListener('change', (e) => {
+                settings.notificationEnabled = e.target.checked; saveSettings();
+                if (settings.notificationEnabled) {
+                    requestNotificationPermission();
+                    showToast('🔔 后台通知已开启', 2500);
+                } else {
+                    showToast('🔕 后台通知已关闭');
+                }
+            });
         }, 100);
     }
 
@@ -627,9 +815,11 @@
             const f = document.getElementById('dog_top_float_toggle');
             const s = document.getElementById('dog_top_sound_toggle');
             const t = document.getElementById('dog_top_translate_toggle');
+            const n = document.getElementById('dog_top_notif_toggle');
             if (f) f.checked = settings.floatEnabled;
             if (s) s.checked = settings.soundEnabled;
             if (t) t.checked = settings.translateEnabled;
+            if (n) n.checked = settings.notificationEnabled;
         } catch (e) {}
     }
 
@@ -637,13 +827,16 @@
     // 🚀 初始化
     // ====================================================
     function init() {
-        console.log(`[${PLUGIN_NAME}] 🐶🦴TOP v1.5.1 启动...`);
+        console.log(`[${PLUGIN_NAME}] 🐶🦴TOP v1.5.2 启动...`);
+
+        requestNotificationPermission();
         injectExtensionPanel();
         injectFloatingMenu();
         injectSelectionCard();
         injectTranslateUI();
         injectErrorCatcher();
         attachGenerationHooks();
+
         console.log(`[${PLUGIN_NAME}] ✅ OK`);
     }
 
