@@ -1,5 +1,5 @@
 /**
- * 🐶 小狗酒馆 Lite v1.4.0
+ * 🐶 🐶🦴酒馆 Lite v1.4.0
  * 重大升级：
  *  - 长截图改用 modern-screenshot（SVG foreignObject）
  *  - 一次性截全 iframe / Shadow DOM / 现代 CSS（oklch/color-mix）
@@ -853,7 +853,7 @@
             const date = new Date();
             const ds = `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}-${String(date.getDate()).padStart(2,'0')} ${String(date.getHours()).padStart(2,'0')}:${String(date.getMinutes()).padStart(2,'0')}`;
             const engineTag = engineType === 'modern' ? '✨' : '📸';
-            fctx.fillText(`🐶🦴 SillyTavern · 小狗酒馆 Lite ${engineTag}  ·  ${ds}  ·  ${visibleSet.size} 条`, finalCanvas.width / 2, canvas.height + 30);
+            fctx.fillText(`🐶🦴 SillyTavern · 🐶🦴酒馆 Lite ${engineTag}  ·  ${ds}  ·  ${visibleSet.size} 条`, finalCanvas.width / 2, canvas.height + 30);
 
             saveCanvas(finalCanvas, `Tavern_LongShot_${Date.now()}.png`);
         } catch (e) {
@@ -1046,7 +1046,7 @@
             panel.innerHTML = '';
             const hd = document.createElement('div');
             hd.className = 'dog-header-v2';
-            hd.innerHTML = `<span class="logo">🐶🦴</span><span class="name">小狗酒馆 Lite</span><span class="ver">v1.4.0</span>`;
+            hd.innerHTML = `<span class="logo">🐶🦴</span><span class="name">🐶🦴酒馆 Lite</span><span class="ver">v1.4.0</span>`;
             panel.appendChild(hd);
             const div1 = document.createElement('div'); div1.className = 'dog-divider-v2'; panel.appendChild(div1);
 
@@ -1171,7 +1171,7 @@
         wrapper.innerHTML = `
             <div class="dog-modal-panel">
                 <div style="font-size:32px;text-align:center;margin-bottom:8px;">🐶🦴</div>
-                <div style="font-size:19px;font-weight:700;text-align:center;margin-bottom:6px;color:#fff;">小狗酒馆 Lite</div>
+                <div style="font-size:19px;font-weight:700;text-align:center;margin-bottom:6px;color:#fff;">🐶🦴酒馆 Lite</div>
                 <div style="font-size:12px;color:rgba(255,255,255,0.55);text-align:center;margin-bottom:18px;">v1.4.0 · 跨平台增强插件</div>
                 <div class="dog-about-card"><b>✨ 一次性长截图</b><br/>modern-screenshot 引擎<br/>iframe/Shadow DOM/oklch全支持</div>
                 <div class="dog-about-card"><b>🐾 玻璃拟态菜单</b><br/>可拖动 / 位置记忆</div>
