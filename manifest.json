@@ -1,0 +1,12 @@
+{
+  "display_name": "🐶 小狗酒馆 Lite",
+  "loading_order": 10,
+  "requires": [],
+  "optional": [],
+  "js": "index.js",
+  "css": "style.css",
+  "author": "xixijiuguan",
+  "version": "1.0.0",
+  "homePage": "https://github.com/你的用户名/SillyTavern-DogTavern-Lite",
+  "auto_update": true
+}
