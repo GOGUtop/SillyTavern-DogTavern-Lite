@@ -103,22 +103,25 @@
 .dog-badge-on { background: linear-gradient(135deg,#10b981,#059669); color: #fff; font-size: 9px; font-weight: 700; padding: 2px 6px; border-radius: 8px; margin-left: 4px; }
 .dog-badge-off { background: rgba(255,255,255,0.1); color: rgba(255,255,255,0.5); font-size: 9px; font-weight: 700; padding: 2px 6px; border-radius: 8px; margin-left: 4px; }
 
+/* ======== 核心修复部分 ======== */
 .dog-modal-wrapper {
-    position: fixed;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
+    position: fixed !important;
+    top: 0 !important;
+    left: 0 !important;
+    right: 0 !important;
+    bottom: 0 !important;
     background: rgba(0,0,0,0.65);
     backdrop-filter: blur(8px);
     -webkit-backdrop-filter: blur(8px);
     z-index: 2147483647 !important;
-    display: flex;
-    align-items: flex-start;
-    justify-content: center;
-    padding: 30px 16px;
+    display: flex !important;
+    align-items: flex-start !important;
+    justify-content: center !important;
+    /* 强制划定上下 80px 的安全区，彻底避开顶部导航栏和底部输入框 */
+    padding: 80px 16px 80px !important; 
+    box-sizing: border-box !important;
     animation: dogFadeIn 0.2s ease;
-    overflow-y: auto;
+    overflow-y: auto !important;
     -webkit-overflow-scrolling: touch;
 }
 @keyframes dogFadeIn { from { opacity: 0; } to { opacity: 1; } }
@@ -130,10 +133,13 @@
     padding: 18px;
     max-width: 420px;
     width: 100%;
-    margin: auto;
+    /* 顶部贴紧 wrapper 的 padding，底部自适应，左右居中 */
+    margin: 0 auto auto auto !important; 
     box-shadow: 0 20px 60px rgba(0,0,0,0.5);
     position: relative;
+    z-index: 2147483647 !important;
 }
+/* ============================ */
 
 .dog-poster-btn { display: flex; align-items: center; gap: 12px; width: 100%; padding: 12px 14px; border: none; border-radius: 12px; margin-bottom: 8px; cursor: pointer; transition: transform 0.15s; font-family: -apple-system, sans-serif; }
 .dog-poster-btn:hover { transform: translateX(2px); }
