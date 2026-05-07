@@ -1,31 +1,25 @@
 /**
- * 🐶 🐶🦴酒馆 Lite v1.4.0
- * 重大升级：
- *  - 长截图改用 modern-screenshot（SVG foreignObject）
- *  - 一次性截全 iframe / Shadow DOM / 现代 CSS（oklch/color-mix）
- *  - html2canvas 自动兜底 + iframe 预渲染兜底
+ * 🐶🦴TOP v1.5.0
+ * 修复：
+ *  - 在扩展程序面板中正确显示
+ *  - 增加开关控制悬浮球显示/隐藏
+ *  - 悬浮球边缘吸附（50%露出）
+ *  - 移除长截图功能（iOS不兼容）
+ *  - 插件名改为 🐶🦴TOP
  */
 
 (function () {
     'use strict';
 
-    const PLUGIN_NAME = 'DogTavernLite';
-    const LS_KEY = 'dog_tavern_lite_settings';
-    const POS_KEY = 'dog_tavern_folder_pos';
+    const PLUGIN_NAME = 'DogTop';
+    const LS_KEY = 'dog_top_settings';
+    const POS_KEY = 'dog_top_folder_pos';
 
-    // 截图引擎 CDN：优先 modern-screenshot，兜底 html2canvas
-    const SHOT_CDNS = [
-        { type: 'modern', url: 'https://cdn.jsdelivr.net/npm/modern-screenshot@4.4.39/dist/index.umd.js' },
-        { type: 'modern', url: 'https://unpkg.com/modern-screenshot@4.4.39/dist/index.umd.js' },
-        { type: 'modern', url: 'https://cdn.bootcdn.net/ajax/libs/modern-screenshot/4.4.39/index.umd.js' },
-        { type: 'modern', url: 'https://lib.baomitu.com/modern-screenshot/4.4.39/index.umd.js' },
-        { type: 'h2c',    url: 'https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js' },
-        { type: 'h2c',    url: 'https://unpkg.com/html2canvas@1.4.1/dist/html2canvas.min.js' },
-        { type: 'h2c',    url: 'https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js' },
-        { type: 'h2c',    url: 'https://lib.baomitu.com/html2canvas/1.4.1/html2canvas.min.js' }
-    ];
-
-    const defaultSettings = { soundEnabled: true, translateEnabled: true };
+    const defaultSettings = {
+        soundEnabled: true,
+        translateEnabled: true,
+        floatEnabled: true
+    };
     let settings = { ...defaultSettings };
     try {
         const saved = localStorage.getItem(LS_KEY);
@@ -255,7 +249,7 @@
         ctx.fillStyle = st.text; ctx.globalAlpha = 0.65;
         ctx.font = 'bold 26px -apple-system,sans-serif';
         ctx.textAlign = 'center';
-        ctx.fillText('🐶🦴 酒馆 · SillyTavern', W / 2, fDivY + 50);
+        ctx.fillText('🐶🦴TOP · SillyTavern', W / 2, fDivY + 50);
         ctx.globalAlpha = 0.45;
         ctx.font = '20px -apple-system,sans-serif';
         const date = new Date();
@@ -309,7 +303,7 @@
         showToast('🎨 正在绘制精美卡片汪～', 1500);
         try {
             const canvas = await drawPosterCard(text, charName, avatarUrl, styleIdx);
-            saveCanvas(canvas, `Tavern_Card_${Date.now()}.png`);
+            saveCanvas(canvas, `DogTop_Card_${Date.now()}.png`);
         } catch (e) {
             showToast('❌ 生成失败：' + e.message, 3500);
         }
@@ -580,367 +574,32 @@
     }
 
     // ====================================================
-    // 📸 长截图 v2 — modern-screenshot 优先 / html2canvas 兜底
+    // 🐾 悬浮球 + 玻璃拟态菜单 + 边缘吸附
     // ====================================================
-    function loadScriptOnce(url, timeoutMs = 12000) {
-        return new Promise((resolve, reject) => {
-            const s = document.createElement('script');
-            let done = false;
-            const timer = setTimeout(() => { if (!done) { done = true; s.remove(); reject(new Error('超时')); } }, timeoutMs);
-            s.src = url;
-            s.crossOrigin = 'anonymous';
-            s.onload = () => { if (!done) { done = true; clearTimeout(timer); resolve(); } };
-            s.onerror = () => { if (!done) { done = true; clearTimeout(timer); s.remove(); reject(new Error('网络错误')); } };
-            document.head.appendChild(s);
-        });
+    let folderEl = null;
+
+    function showFloatingMenu() {
+        if (folderEl) { folderEl.style.display = ''; return; }
+        injectFloatingMenu();
     }
 
-    let _shotEngine = null;  // 'modern' | 'h2c' | null
-    async function loadShotEngine() {
-        if (_shotEngine === 'modern' && window.modernScreenshot) return 'modern';
-        if (_shotEngine === 'h2c' && window.html2canvas) return 'h2c';
-        if (window.modernScreenshot) { _shotEngine = 'modern'; return 'modern'; }
-        if (window.html2canvas) { _shotEngine = 'h2c'; return 'h2c'; }
-
-        let lastErr = null;
-        for (const cdn of SHOT_CDNS) {
-            try {
-                console.log('[DogTavern] 尝试加载截图引擎:', cdn.type, cdn.url);
-                await loadScriptOnce(cdn.url);
-                if (cdn.type === 'modern' && window.modernScreenshot) {
-                    console.log('[DogTavern] ✨ modern-screenshot 加载成功（一次性截全iframe/ShadowDOM）');
-                    _shotEngine = 'modern';
-                    return 'modern';
-                }
-                if (cdn.type === 'h2c' && window.html2canvas) {
-                    console.log('[DogTavern] html2canvas 加载成功（兜底模式）');
-                    _shotEngine = 'h2c';
-                    return 'h2c';
-                }
-            } catch (e) {
-                console.warn('[DogTavern] CDN 失败:', cdn.url, e.message);
-                lastErr = e;
-            }
-        }
-        throw new Error('所有截图引擎 CDN 均失败' + (lastErr ? '（' + lastErr.message + '）' : ''));
+    function hideFloatingMenu() {
+        if (folderEl) { folderEl.style.display = 'none'; }
     }
 
-    // 把 html2canvas 不认识的现代 CSS 色彩函数替换成普通色（仅 h2c 兜底用）
-    function sanitizeModernCssInClone(clonedDoc) {
-        try {
-            const re = /\b(oklch|oklab|color-mix|lab|lch|hwb)\s*\([^)]*\)/gi;
-            const all = clonedDoc.querySelectorAll('*');
-            all.forEach(el => {
-                const s = el.getAttribute && el.getAttribute('style');
-                if (s && re.test(s)) {
-                    el.setAttribute('style', s.replace(re, '#888'));
-                }
-            });
-            clonedDoc.querySelectorAll('style').forEach(st => {
-                if (st.textContent && re.test(st.textContent)) {
-                    st.textContent = st.textContent.replace(re, '#888');
-                }
-            });
-        } catch (e) { console.warn('[DogTavern] sanitize 失败:', e); }
-    }
-
-    // h2c 兜底专用：iframe 预渲染
-    async function snapshotIframeWithH2c(iframe, h2c) {
-        try {
-            const doc = iframe.contentDocument;
-            if (!doc || !doc.body) return null;
-            const w = iframe.offsetWidth || iframe.clientWidth || doc.body.scrollWidth;
-            const h = Math.max(doc.body.scrollHeight, doc.documentElement.scrollHeight, iframe.offsetHeight || 0);
-            if (w < 5 || h < 5) return null;
-            let bg;
-            try {
-                bg = iframe.contentWindow.getComputedStyle(doc.body).backgroundColor;
-                if (!bg || bg === 'rgba(0, 0, 0, 0)' || bg === 'transparent') bg = null;
-            } catch (e) { bg = null; }
-            const canvas = await h2c(doc.body, {
-                backgroundColor: bg, useCORS: true, allowTaint: true, logging: false,
-                imageTimeout: 8000, scale: Math.min(window.devicePixelRatio || 1, 2),
-                width: w, height: h, windowWidth: w, windowHeight: h,
-                onclone: (cd) => sanitizeModernCssInClone(cd)
-            });
-            return { canvas, w, h };
-        } catch (e) {
-            console.warn('[DogTavern] iframe 预渲染失败:', e);
-            return null;
-        }
-    }
-
-    async function generateLongScreenshot(scope = 'all', range = null) {
-        showToast('📸 准备长截图...', 1500);
-
-        let engineType;
-        try {
-            engineType = await loadShotEngine();
-        } catch (e) {
-            showToast('❌ 截图引擎加载失败\n请检查网络（详情见控制台）', 4000);
-            console.error(e);
+    function injectFloatingMenu() {
+        if (document.querySelector('[data-dog-tool-folder]')) {
+            folderEl = document.querySelector('[data-dog-tool-folder]');
             return;
         }
-
-        const chat = document.getElementById('chat') || document.querySelector('#chat');
-        if (!chat) { showToast('❌ 找不到 #chat 容器'); return; }
-
-        const allMes = Array.from(chat.querySelectorAll('.mes'));
-        if (!allMes.length) { showToast('❌ 没有消息可截'); return; }
-
-        let visibleSet;
-        if (scope === 'ai') visibleSet = new Set(allMes.filter(m => m.getAttribute('is_user') !== 'true'));
-        else if (scope === 'last10') visibleSet = new Set(allMes.slice(-10));
-        else if (scope === 'last20') visibleSet = new Set(allMes.slice(-20));
-        else if (scope === 'custom' && range) {
-            const s = Math.max(0, range.start);
-            const e = Math.min(allMes.length - 1, range.end);
-            visibleSet = new Set(allMes.slice(s, e + 1));
-        } else visibleSet = new Set(allMes);
-
-        if (visibleSet.size === 0) { showToast('❌ 范围内没有消息'); return; }
-
-        // 隐藏不在范围内的消息
-        const hiddenList = [];
-        allMes.forEach(m => {
-            if (!visibleSet.has(m)) {
-                hiddenList.push({ el: m, display: m.style.display });
-                m.style.display = 'none';
-            }
-        });
-
-        // 隐藏所有 fixed 浮层
-        const floatingEls = [];
-        document.querySelectorAll('body *').forEach(el => {
-            try {
-                const cs = getComputedStyle(el);
-                if (cs.position === 'fixed' && cs.visibility !== 'hidden' && el.offsetParent !== null) {
-                    floatingEls.push({ el, vis: el.style.visibility });
-                    el.style.visibility = 'hidden';
-                }
-            } catch (e) {}
-        });
-
-        const oldOverflow = chat.style.overflow;
-        const oldHeight = chat.style.height;
-        const oldMaxHeight = chat.style.maxHeight;
-        chat.style.overflow = 'visible';
-        chat.style.height = 'auto';
-        chat.style.maxHeight = 'none';
-
-        // —— 仅 h2c 兜底模式时才需要 iframe 预渲染替换 ——
-        const iframeReplacements = [];
-        if (engineType === 'h2c') {
-            const iframes = Array.from(chat.querySelectorAll('iframe'));
-            if (iframes.length > 0) {
-                showToast(`🖼️ 兜底模式：预渲染 ${iframes.length} 个HTML块...`, 2500);
-                for (const ifr of iframes) {
-                    const snap = await snapshotIframeWithH2c(ifr, window.html2canvas);
-                    if (!snap) continue;
-                    try {
-                        const dataUrl = snap.canvas.toDataURL('image/png');
-                        const img = document.createElement('img');
-                        img.src = dataUrl;
-                        const cs = getComputedStyle(ifr);
-                        img.style.cssText = `display:block;width:${ifr.offsetWidth || snap.w}px;height:${ifr.offsetHeight || snap.h}px;max-width:100%;border:none;margin:${cs.margin};border-radius:${cs.borderRadius};`;
-                        const parent = ifr.parentNode;
-                        const nextSibling = ifr.nextSibling;
-                        parent.replaceChild(img, ifr);
-                        iframeReplacements.push({ iframe: ifr, placeholder: img, parent, nextSibling });
-                    } catch (e) { console.warn('iframe替换失败', e); }
-                }
-            }
-        }
-
-        await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
-        await new Promise(r => setTimeout(r, 400));
-
-        showToast(engineType === 'modern' ? '✨ 一次性渲染中（含iframe）...' : '📸 渲染中...', 2500);
-
-        let canvas;
-        try {
-            const bg = getComputedStyle(document.body).backgroundColor || '#1a1a2e';
-
-            if (engineType === 'modern') {
-                // ===== modern-screenshot =====
-                canvas = await window.modernScreenshot.domToCanvas(chat, {
-                    backgroundColor: bg,
-                    scale: Math.min(window.devicePixelRatio || 1, 2),
-                    width: chat.scrollWidth,
-                    height: chat.scrollHeight,
-                    fetch: { requestInit: { cache: 'force-cache' } },
-                    filter: (node) => {
-                        if (!node || !node.getAttribute) return true;
-                        if (node.hasAttribute && (
-                            node.hasAttribute('data-dog-tool-folder') ||
-                            node.hasAttribute('data-dog-card-btn') ||
-                            node.hasAttribute('data-dog-tr-btn')
-                        )) return false;
-                        if (node.id === 'dog-toast') return false;
-                        return true;
-                    }
-                });
-            } else {
-                // ===== html2canvas 兜底 =====
-                canvas = await window.html2canvas(chat, {
-                    backgroundColor: bg,
-                    useCORS: true, allowTaint: true, logging: false,
-                    imageTimeout: 10000,
-                    scale: Math.min(window.devicePixelRatio || 1, 2),
-                    width: chat.scrollWidth,
-                    height: chat.scrollHeight,
-                    windowWidth: chat.scrollWidth,
-                    windowHeight: chat.scrollHeight,
-                    scrollX: 0, scrollY: 0,
-                    onclone: (clonedDoc) => {
-                        sanitizeModernCssInClone(clonedDoc);
-                        clonedDoc.querySelectorAll('[data-dog-tool-folder],[data-dog-card-btn],[data-dog-tr-btn],#dog-toast,.dog-tr-bubble,.dog-modal-wrapper').forEach(n => n.remove());
-                        const cChat = clonedDoc.getElementById('chat');
-                        if (cChat) {
-                            cChat.style.overflow = 'visible';
-                            cChat.style.height = 'auto';
-                            cChat.style.maxHeight = 'none';
-                        }
-                    },
-                    ignoreElements: (el) => {
-                        if (!el.getAttribute) return false;
-                        if (el.hasAttribute('data-dog-tool-folder')) return true;
-                        if (el.hasAttribute('data-dog-card-btn')) return true;
-                        if (el.hasAttribute('data-dog-tr-btn')) return true;
-                        if (el.id === 'dog-toast') return true;
-                        return false;
-                    }
-                });
-            }
-        } catch (e) {
-            console.error('[DogTavern] 渲染失败:', e);
-            showToast('❌ 渲染失败：' + (e.message || e) + '\n（详情见控制台）', 5000);
-        } finally {
-            // 还原 iframe（如果有替换）
-            iframeReplacements.forEach(({ iframe, placeholder, parent, nextSibling }) => {
-                try {
-                    if (placeholder.parentNode) {
-                        placeholder.parentNode.replaceChild(iframe, placeholder);
-                    } else if (nextSibling && nextSibling.parentNode) {
-                        nextSibling.parentNode.insertBefore(iframe, nextSibling);
-                    } else {
-                        parent.appendChild(iframe);
-                    }
-                } catch (e) { console.warn('iframe还原失败:', e); }
-            });
-            hiddenList.forEach(({ el, display }) => { el.style.display = display; });
-            chat.style.overflow = oldOverflow;
-            chat.style.height = oldHeight;
-            chat.style.maxHeight = oldMaxHeight;
-            floatingEls.forEach(({ el, vis }) => { el.style.visibility = vis; });
-        }
-
-        if (!canvas) return;
-
-        try {
-            const footerH = 50;
-            const finalCanvas = document.createElement('canvas');
-            finalCanvas.width = canvas.width;
-            finalCanvas.height = canvas.height + footerH;
-            const fctx = finalCanvas.getContext('2d');
-            const bg = getComputedStyle(document.body).backgroundColor || '#1a1a2e';
-            fctx.fillStyle = bg;
-            fctx.fillRect(0, 0, finalCanvas.width, finalCanvas.height);
-            fctx.drawImage(canvas, 0, 0);
-            fctx.fillStyle = 'rgba(255,255,255,0.5)';
-            fctx.font = `${Math.max(14, finalCanvas.width / 60)}px -apple-system,sans-serif`;
-            fctx.textAlign = 'center';
-            const date = new Date();
-            const ds = `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}-${String(date.getDate()).padStart(2,'0')} ${String(date.getHours()).padStart(2,'0')}:${String(date.getMinutes()).padStart(2,'0')}`;
-            const engineTag = engineType === 'modern' ? '✨' : '📸';
-            fctx.fillText(`🐶🦴 SillyTavern · 🐶🦴酒馆 Lite ${engineTag}  ·  ${ds}  ·  ${visibleSet.size} 条`, finalCanvas.width / 2, canvas.height + 30);
-
-            saveCanvas(finalCanvas, `Tavern_LongShot_${Date.now()}.png`);
-        } catch (e) {
-            console.error(e);
-            showToast('❌ 保存失败：' + e.message, 3500);
-        }
-    }
-
-    function showLongShotMenu() {
-        const old = document.getElementById('dog-shot-wrapper');
-        if (old) old.remove();
-        const allMes = document.querySelectorAll('#chat .mes, .mes');
-        const total = allMes.length;
-        const maxIdx = Math.max(0, total - 1);
-
-        const wrapper = document.createElement('div');
-        wrapper.id = 'dog-shot-wrapper';
-        wrapper.className = 'dog-modal-wrapper';
-        const panel = document.createElement('div');
-        panel.className = 'dog-modal-panel';
-        panel.innerHTML = `
-            <div style="font-size:28px;text-align:center;margin-bottom:6px;">📸</div>
-            <div style="font-size:18px;font-weight:700;text-align:center;color:#fff;margin-bottom:6px;">长截图范围</div>
-            <div style="font-size:11px;color:rgba(255,255,255,0.55);text-align:center;margin-bottom:6px;">当前共 <b style="color:#fee140;">${total}</b> 楼（楼层号 0 ~ ${maxIdx}）</div>
-            <div style="font-size:10px;color:rgba(130,177,255,0.7);text-align:center;margin-bottom:14px;">✨ 一次性渲染：iframe / 自定义CSS / 现代色彩 全收录</div>
-            <div style="background:rgba(255,255,255,0.08);border-radius:10px;padding:12px;margin-bottom:12px;">
-                <div style="font-size:13px;color:#fee140;font-weight:700;margin-bottom:8px;">🎯 自定义楼层</div>
-                <div style="display:flex;align-items:center;gap:6px;">
-                    <input id="dog-shot-from" type="number" min="0" max="${maxIdx}" placeholder="起" value="0"
-                        style="flex:1;padding:8px;border:1px solid rgba(255,255,255,0.2);background:rgba(0,0,0,0.3);color:#fff;border-radius:6px;font-size:14px;text-align:center;">
-                    <span style="color:rgba(255,255,255,0.6);">~</span>
-                    <input id="dog-shot-to" type="number" min="0" max="${maxIdx}" placeholder="止" value="${maxIdx}"
-                        style="flex:1;padding:8px;border:1px solid rgba(255,255,255,0.2);background:rgba(0,0,0,0.3);color:#fff;border-radius:6px;font-size:14px;text-align:center;">
-                    <button id="dog-shot-go" style="padding:8px 14px;border:none;border-radius:6px;background:linear-gradient(135deg,#fa709a,#fee140);color:#3e2723;font-weight:700;font-size:13px;cursor:pointer;">✨ 截取</button>
-                </div>
-            </div>
-            <button data-scope="all" class="dog-poster-btn" style="background:linear-gradient(135deg,#667eea,#764ba2);color:#fff;">
-                <span style="font-size:24px;">📜</span>
-                <span style="flex:1;text-align:left;"><span style="display:block;font-size:14px;font-weight:700;">全部消息</span><span style="display:block;font-size:11px;opacity:0.8;">完整对话历史（${total}条）</span></span>
-                <span style="opacity:0.5;">›</span>
-            </button>
-            <button data-scope="ai" class="dog-poster-btn" style="background:linear-gradient(135deg,#f093fb,#f5576c);color:#fff;">
-                <span style="font-size:24px;">🤖</span>
-                <span style="flex:1;text-align:left;"><span style="display:block;font-size:14px;font-weight:700;">仅 AI 消息</span><span style="display:block;font-size:11px;opacity:0.8;">只导出AI回复</span></span>
-                <span style="opacity:0.5;">›</span>
-            </button>
-            <button data-scope="last10" class="dog-poster-btn" style="background:linear-gradient(135deg,#11998e,#38ef7d);color:#fff;">
-                <span style="font-size:24px;">🔟</span>
-                <span style="flex:1;text-align:left;"><span style="display:block;font-size:14px;font-weight:700;">最近 10 条</span><span style="display:block;font-size:11px;opacity:0.8;">最新片段</span></span>
-                <span style="opacity:0.5;">›</span>
-            </button>
-            <button data-scope="last20" class="dog-poster-btn" style="background:linear-gradient(135deg,#fa709a,#fee140);color:#3e2723;">
-                <span style="font-size:24px;">2️⃣0️⃣</span>
-                <span style="flex:1;text-align:left;"><span style="display:block;font-size:14px;font-weight:700;">最近 20 条</span><span style="display:block;font-size:11px;opacity:0.8;">中等长度</span></span>
-                <span style="opacity:0.5;">›</span>
-            </button>
-            <button class="dog-cancel-btn" id="dog-shot-cancel">取消</button>
-        `;
-        wrapper.appendChild(panel);
-        document.body.appendChild(wrapper);
-        wrapper.addEventListener('click', (e) => { if (e.target === wrapper) wrapper.remove(); });
-        panel.querySelector('#dog-shot-cancel').onclick = () => wrapper.remove();
-        panel.querySelector('#dog-shot-go').onclick = () => {
-            const from = parseInt(panel.querySelector('#dog-shot-from').value);
-            const to = parseInt(panel.querySelector('#dog-shot-to').value);
-            if (isNaN(from) || isNaN(to)) { showToast('❌ 请输入有效楼层数字'); return; }
-            if (from < 0 || to > maxIdx) { showToast(`❌ 楼层范围应在 0 ~ ${maxIdx}`); return; }
-            if (from > to) { showToast('❌ 起始楼层不能大于结束楼层'); return; }
-            wrapper.remove();
-            generateLongScreenshot('custom', { start: from, end: to });
-        };
-        panel.querySelectorAll('[data-scope]').forEach(b => {
-            b.onclick = () => { const scope = b.getAttribute('data-scope'); wrapper.remove(); generateLongScreenshot(scope); };
-        });
-    }
-
-    // ====================================================
-    // 🐾 悬浮球 + 玻璃拟态菜单
-    // ====================================================
-    function injectFloatingMenu() {
-        if (document.querySelector('[data-dog-tool-folder]')) return;
 
         if (!document.getElementById('dog-folder-style-v2')) {
             const st = document.createElement('style');
             st.id = 'dog-folder-style-v2';
             st.textContent = `
-                .dog-folder-v2{position:fixed;top:50%;right:12px;z-index:2147483640;font-family:-apple-system,"PingFang SC",sans-serif;}
+                .dog-folder-v2{position:fixed;top:50%;right:0px;z-index:2147483640;font-family:-apple-system,"PingFang SC",sans-serif;transition:left 0.3s ease, right 0.3s ease, transform 0.3s ease;}
+                .dog-folder-v2.snapped-right{right:-27px !important;left:auto !important;}
+                .dog-folder-v2.snapped-left{left:-27px !important;right:auto !important;}
                 .dog-trigger-v2{
                     width:54px;height:54px;border-radius:50%;cursor:pointer;
                     background:radial-gradient(circle at 30% 30%,#a78bfa,#7c3aed 60%,#4c1d95);
@@ -973,6 +632,14 @@
                 }
                 .dog-panel-v2.show{
                     opacity:1;pointer-events:auto;visibility:visible;
+                    transform:translateY(-50%) scale(1);
+                }
+                .dog-panel-v2.panel-left{
+                    right:auto;left:64px;
+                    transform-origin:left center;
+                    transform:translateY(-50%) scale(0.85);
+                }
+                .dog-panel-v2.panel-left.show{
                     transform:translateY(-50%) scale(1);
                 }
                 .dog-row-v2{display:flex;align-items:center;gap:10px;padding:9px 10px;border-radius:12px;cursor:pointer;color:#fff;transition:background .15s;}
@@ -1008,16 +675,29 @@
         const folder = document.createElement('div');
         folder.setAttribute('data-dog-tool-folder', '1');
         folder.className = 'dog-folder-v2';
+        folderEl = folder;
 
+        // 恢复位置
+        let snappedSide = 'right'; // 'left' or 'right'
         try {
             const saved = JSON.parse(localStorage.getItem(POS_KEY) || 'null');
-            if (saved && typeof saved.top === 'number' && typeof saved.left === 'number') {
+            if (saved && typeof saved.top === 'number') {
                 folder.style.top = saved.top + 'px';
-                folder.style.left = saved.left + 'px';
-                folder.style.right = 'auto';
-                folder.style.transform = 'none';
+                if (saved.side === 'left') {
+                    snappedSide = 'left';
+                    folder.classList.add('snapped-left');
+                    folder.classList.remove('snapped-right');
+                } else {
+                    snappedSide = 'right';
+                    folder.classList.add('snapped-right');
+                    folder.classList.remove('snapped-left');
+                }
+            } else {
+                folder.classList.add('snapped-right');
             }
-        } catch (e) {}
+        } catch (e) {
+            folder.classList.add('snapped-right');
+        }
 
         const trigger = document.createElement('div');
         trigger.className = 'dog-trigger-v2';
@@ -1042,11 +722,20 @@
             return r;
         }
 
+        function updatePanelSide() {
+            if (snappedSide === 'left') {
+                panel.classList.add('panel-left');
+            } else {
+                panel.classList.remove('panel-left');
+            }
+        }
+
         function buildPanel() {
             panel.innerHTML = '';
+            updatePanelSide();
             const hd = document.createElement('div');
             hd.className = 'dog-header-v2';
-            hd.innerHTML = `<span class="logo">🐶🦴</span><span class="name">🐶🦴酒馆 Lite</span><span class="ver">v1.4.0</span>`;
+            hd.innerHTML = `<span class="logo">🐶🦴</span><span class="name">🐶🦴TOP</span><span class="ver">v1.5.0</span>`;
             panel.appendChild(hd);
             const div1 = document.createElement('div'); div1.className = 'dog-divider-v2'; panel.appendChild(div1);
 
@@ -1058,6 +747,7 @@
                     settings.soundEnabled = !settings.soundEnabled; saveSettings();
                     showToast(settings.soundEnabled ? '🔊 提示音已开启' : '🔇 提示音已关闭');
                     if (settings.soundEnabled) playSound();
+                    syncSettingsToPanel();
                 },
                 settings.soundEnabled ? '<span class="dog-badge-on">ON</span>' : '<span class="dog-badge-off">OFF</span>'
             ));
@@ -1068,6 +758,7 @@
                 () => {
                     settings.translateEnabled = !settings.translateEnabled; saveSettings();
                     showToast(settings.translateEnabled ? '🌐 划词翻译已开启' : '🚫 划词翻译已关闭');
+                    syncSettingsToPanel();
                 },
                 settings.translateEnabled ? '<span class="dog-badge-on">ON</span>' : '<span class="dog-badge-off">OFF</span>'
             ));
@@ -1075,7 +766,6 @@
             const div2 = document.createElement('div'); div2.className = 'dog-divider-v2'; panel.appendChild(div2);
 
             panel.appendChild(row('linear-gradient(135deg,#eb3349,#f45c43)', '🩺', '错误码翻译', '字典+机翻 解析报错', showErrorTranslate));
-            panel.appendChild(row('linear-gradient(135deg,#43cea2,#185a9d)', '📸', '长截图', '一次性截全iframe/自定义CSS', showLongShotMenu));
             panel.appendChild(row('linear-gradient(135deg,#f093fb,#f5576c)', '🔖', '生成卡片', '选中AI文字后弹出',
                 () => showToast('💡 请先选中AI消息文字\n再点击弹出的"生成卡片"', 3500)));
 
@@ -1103,6 +793,7 @@
         }
         window._dogCollapseFolder = collapse;
 
+        // 拖拽 + 吸附逻辑
         let dragMoved = false, dragging = false;
         let startX = 0, startY = 0, startTop = 0, startLeft = 0;
 
@@ -1111,6 +802,9 @@
             startX = cx; startY = cy;
             const rect = folder.getBoundingClientRect();
             startTop = rect.top; startLeft = rect.left;
+            // 拖动时临时移除吸附类
+            folder.classList.remove('snapped-left', 'snapped-right');
+            folder.style.transition = 'none';
         }
         function dragMove(cx, cy) {
             if (!dragging) return;
@@ -1120,7 +814,7 @@
                 const w = folder.offsetWidth || 54;
                 const h = folder.offsetHeight || 54;
                 let t = Math.max(0, Math.min(window.innerHeight - h, startTop + dy));
-                let l = Math.max(0, Math.min(window.innerWidth - w, startLeft + dx));
+                let l = Math.max(-w/2, Math.min(window.innerWidth - w/2, startLeft + dx));
                 folder.style.top = t + 'px';
                 folder.style.left = l + 'px';
                 folder.style.right = 'auto';
@@ -1131,9 +825,30 @@
         function dragEnd() {
             if (!dragging) return;
             dragging = false;
+            folder.style.transition = '';
             if (dragMoved) {
-                const r = folder.getBoundingClientRect();
-                try { localStorage.setItem(POS_KEY, JSON.stringify({ top: r.top, left: r.left })); } catch (e) {}
+                // 吸附到最近的边缘，露出50%
+                const rect = folder.getBoundingClientRect();
+                const centerX = rect.left + rect.width / 2;
+                const t = Math.max(0, Math.min(window.innerHeight - rect.height, rect.top));
+                folder.style.top = t + 'px';
+
+                if (centerX < window.innerWidth / 2) {
+                    // 吸附左侧
+                    snappedSide = 'left';
+                    folder.style.left = '';
+                    folder.style.right = '';
+                    folder.classList.add('snapped-left');
+                    folder.classList.remove('snapped-right');
+                } else {
+                    // 吸附右侧
+                    snappedSide = 'right';
+                    folder.style.left = '';
+                    folder.style.right = '';
+                    folder.classList.add('snapped-right');
+                    folder.classList.remove('snapped-left');
+                }
+                try { localStorage.setItem(POS_KEY, JSON.stringify({ top: t, side: snappedSide })); } catch (e) {}
             }
         }
 
@@ -1163,6 +878,11 @@
         folder.appendChild(trigger);
         folder.appendChild(panel);
         document.body.appendChild(folder);
+
+        // 如果设置关闭则隐藏
+        if (!settings.floatEnabled) {
+            folder.style.display = 'none';
+        }
     }
 
     function showAboutDialog() {
@@ -1171,10 +891,9 @@
         wrapper.innerHTML = `
             <div class="dog-modal-panel">
                 <div style="font-size:32px;text-align:center;margin-bottom:8px;">🐶🦴</div>
-                <div style="font-size:19px;font-weight:700;text-align:center;margin-bottom:6px;color:#fff;">🐶🦴酒馆 Lite</div>
-                <div style="font-size:12px;color:rgba(255,255,255,0.55);text-align:center;margin-bottom:18px;">v1.4.0 · 跨平台增强插件</div>
-                <div class="dog-about-card"><b>✨ 一次性长截图</b><br/>modern-screenshot 引擎<br/>iframe/Shadow DOM/oklch全支持</div>
-                <div class="dog-about-card"><b>🐾 玻璃拟态菜单</b><br/>可拖动 / 位置记忆</div>
+                <div style="font-size:19px;font-weight:700;text-align:center;margin-bottom:6px;color:#fff;">🐶🦴TOP</div>
+                <div style="font-size:12px;color:rgba(255,255,255,0.55);text-align:center;margin-bottom:18px;">v1.5.0 · 跨平台增强插件</div>
+                <div class="dog-about-card"><b>🐾 玻璃拟态菜单</b><br/>可拖动 / 边缘吸附50% / 位置记忆</div>
                 <div class="dog-about-card"><b>🩺 错误码字典翻译</b><br/>40+ 内置规则 + 机翻兜底</div>
                 <div class="dog-about-card"><b>🔖 选中即生成卡片</b><br/>6种风格精美海报</div>
                 <div class="dog-about-card"><b>🌐 划词翻译</b><br/>微软Edge引擎</div>
@@ -1230,13 +949,13 @@
         }
         document.addEventListener('selectionchange', () => setTimeout(update, 50));
         window.addEventListener('scroll', () => { btn.style.display = 'none'; }, true);
-        const trigger = (e) => {
+        const triggerFn = (e) => {
             e.preventDefault(); e.stopPropagation();
             const t = btn._selText || '', m = btn._targetMes;
             if (t && m) showStyleMenu(t, m);
         };
-        btn.addEventListener('click', trigger);
-        btn.addEventListener('touchend', trigger, { passive: false });
+        btn.addEventListener('click', triggerFn);
+        btn.addEventListener('touchend', triggerFn, { passive: false });
     }
 
     function showStyleMenu(text, mes) {
@@ -1251,8 +970,8 @@
         const wrapper = document.createElement('div');
         wrapper.id = 'dog-poster-wrapper';
         wrapper.className = 'dog-modal-wrapper';
-        const panel = document.createElement('div');
-        panel.className = 'dog-modal-panel';
+        const panelDiv = document.createElement('div');
+        panelDiv.className = 'dog-modal-panel';
         let html = `
             <div style="font-size:28px;text-align:center;margin-bottom:6px;">✨</div>
             <div style="font-size:18px;font-weight:700;text-align:center;color:#fff;margin-bottom:6px;">选择卡片风格</div>
@@ -1270,13 +989,13 @@
                 </button>`;
         });
         html += `<button class="dog-cancel-btn" id="dog-poster-cancel">取消</button>`;
-        panel.innerHTML = html;
-        wrapper.appendChild(panel);
+        panelDiv.innerHTML = html;
+        wrapper.appendChild(panelDiv);
         document.body.appendChild(wrapper);
         function closeAll() { try { wrapper.remove(); } catch (e) {} }
         wrapper.addEventListener('click', (e) => { if (e.target === wrapper) closeAll(); });
-        panel.querySelector('#dog-poster-cancel').onclick = closeAll;
-        panel.querySelectorAll('.dog-poster-btn').forEach(b => {
+        panelDiv.querySelector('#dog-poster-cancel').onclick = closeAll;
+        panelDiv.querySelectorAll('.dog-poster-btn').forEach(b => {
             b.onclick = () => {
                 const si = parseInt(b.getAttribute('data-style'));
                 const nn = mes.querySelector('.ch_name .name_text') || mes.querySelector('.name_text') || mes.querySelector('.ch_name');
@@ -1377,15 +1096,79 @@
         }
     }
 
+    // ====================================================
+    // 🎛️ 扩展面板设置同步
+    // ====================================================
+    function syncSettingsToPanel() {
+        try {
+            const floatToggle = document.getElementById('dog_top_float_toggle');
+            const soundToggle = document.getElementById('dog_top_sound_toggle');
+            const translateToggle = document.getElementById('dog_top_translate_toggle');
+            if (floatToggle) floatToggle.checked = settings.floatEnabled;
+            if (soundToggle) soundToggle.checked = settings.soundEnabled;
+            if (translateToggle) translateToggle.checked = settings.translateEnabled;
+        } catch (e) {}
+    }
+
+    function bindSettingsPanel() {
+        const waitForPanel = setInterval(() => {
+            const floatToggle = document.getElementById('dog_top_float_toggle');
+            if (!floatToggle) return;
+            clearInterval(waitForPanel);
+
+            // 同步当前状态
+            syncSettingsToPanel();
+
+            // 绑定事件
+            floatToggle.addEventListener('change', (e) => {
+                settings.floatEnabled = e.target.checked;
+                saveSettings();
+                if (settings.floatEnabled) {
+                    showFloatingMenu();
+                    showToast('🐾 悬浮球已开启');
+                } else {
+                    hideFloatingMenu();
+                    showToast('🐾 悬浮球已关闭');
+                }
+            });
+
+            const soundToggle = document.getElementById('dog_top_sound_toggle');
+            if (soundToggle) {
+                soundToggle.addEventListener('change', (e) => {
+                    settings.soundEnabled = e.target.checked;
+                    saveSettings();
+                    showToast(settings.soundEnabled ? '🔊 提示音已开启' : '🔇 提示音已关闭');
+                });
+            }
+
+            const translateToggle = document.getElementById('dog_top_translate_toggle');
+            if (translateToggle) {
+                translateToggle.addEventListener('change', (e) => {
+                    settings.translateEnabled = e.target.checked;
+                    saveSettings();
+                    showToast(settings.translateEnabled ? '🌐 划词翻译已开启' : '🚫 划词翻译已关闭');
+                });
+            }
+        }, 500);
+
+        // 30秒后停止轮询
+        setTimeout(() => clearInterval(waitForPanel), 30000);
+    }
+
+    // ====================================================
+    // 🚀 初始化
+    // ====================================================
     function init() {
-        console.log(`[${PLUGIN_NAME}] 🐶 v1.4.0 启动中...`);
+        console.log(`[${PLUGIN_NAME}] 🐶🦴TOP v1.5.0 启动中...`);
         injectFloatingMenu();
         injectSelectionCard();
         injectTranslateUI();
         injectErrorCatcher();
         attachGenerationHooks();
+        bindSettingsPanel();
         console.log(`[${PLUGIN_NAME}] ✅ 启动成功！`);
     }
+
     if (typeof jQuery !== 'undefined') {
         jQuery(() => setTimeout(init, 500));
     } else {
