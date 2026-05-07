@@ -1,20 +1,11 @@
-/* 🐶🦴TOP v1.5.0 样式 */
+/* 🐶🦴TOP v1.5.1 */
 
 /* ===== 悬浮球容器 ===== */
 .dog-folder-v2 {
     position: fixed;
-    top: 50%;
     z-index: 2147483640;
     font-family: -apple-system, "PingFang SC", sans-serif;
-    transition: left 0.3s ease, right 0.3s ease;
-}
-.dog-folder-v2.snapped-right {
-    right: -27px;
-    left: auto !important;
-}
-.dog-folder-v2.snapped-left {
-    left: -27px;
-    right: auto !important;
+    /* left 和 top 由 JS 控制 */
 }
 
 /* ===== 悬浮球按钮 ===== */
@@ -51,10 +42,9 @@
 .dog-trigger-v2:active { transform: scale(0.92); }
 .dog-trigger-v2.open { background: radial-gradient(circle at 30% 30%, #fb7185, #e11d48 60%, #881337); }
 
-/* ===== 弹出菜单面板 ===== */
+/* ===== 弹出菜单 ===== */
 .dog-panel-v2 {
     position: absolute;
-    right: 64px;
     top: 50%;
     width: 230px;
     padding: 8px;
@@ -63,170 +53,80 @@
     -webkit-backdrop-filter: blur(20px) saturate(180%);
     border: 1px solid rgba(255, 255, 255, 0.12);
     border-radius: 18px;
-    box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.05) inset;
+    box-shadow: 0 20px 50px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.05) inset;
     flex-direction: column;
     gap: 4px;
-    transform: translateY(-50%) scale(0.85);
-    transform-origin: right center;
     opacity: 0;
     pointer-events: none;
     visibility: hidden;
     transition: opacity 0.2s, transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1), visibility 0.2s;
     display: flex;
 }
-.dog-panel-v2.show {
+
+/* 右侧吸附时 → 面板在左边弹出 */
+.dog-panel-v2.panel-right {
+    right: 64px;
+    left: auto;
+    transform: translateY(-50%) scale(0.85);
+    transform-origin: right center;
+}
+.dog-panel-v2.panel-right.show {
     opacity: 1;
     pointer-events: auto;
     visibility: visible;
     transform: translateY(-50%) scale(1);
 }
+
+/* 左侧吸附时 → 面板在右边弹出 */
 .dog-panel-v2.panel-left {
-    right: auto;
     left: 64px;
-    transform-origin: left center;
+    right: auto;
     transform: translateY(-50%) scale(0.85);
+    transform-origin: left center;
 }
 .dog-panel-v2.panel-left.show {
+    opacity: 1;
+    pointer-events: auto;
+    visibility: visible;
     transform: translateY(-50%) scale(1);
 }
 
 /* ===== 菜单行 ===== */
-.dog-row-v2 {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    padding: 9px 10px;
-    border-radius: 12px;
-    cursor: pointer;
-    color: #fff;
-    transition: background 0.15s;
-}
-.dog-row-v2:hover { background: rgba(255, 255, 255, 0.08); }
-.dog-row-v2:active { background: rgba(255, 255, 255, 0.14); }
-.dog-row-v2 .ico {
-    width: 34px;
-    height: 34px;
-    border-radius: 10px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 17px;
-    flex-shrink: 0;
-    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
-}
+.dog-row-v2 { display: flex; align-items: center; gap: 10px; padding: 9px 10px; border-radius: 12px; cursor: pointer; color: #fff; transition: background 0.15s; }
+.dog-row-v2:hover { background: rgba(255,255,255,0.08); }
+.dog-row-v2:active { background: rgba(255,255,255,0.14); }
+.dog-row-v2 .ico { width: 34px; height: 34px; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 17px; flex-shrink: 0; box-shadow: 0 2px 6px rgba(0,0,0,0.3); }
 .dog-row-v2 .meta { flex: 1; min-width: 0; }
 .dog-row-v2 .title { font-size: 13px; font-weight: 600; line-height: 1.2; display: flex; align-items: center; }
-.dog-row-v2 .desc { font-size: 10.5px; color: rgba(255, 255, 255, 0.5); margin-top: 2px; line-height: 1.2; }
-.dog-row-v2 .arrow { color: rgba(255, 255, 255, 0.3); font-size: 14px; }
+.dog-row-v2 .desc { font-size: 10.5px; color: rgba(255,255,255,0.5); margin-top: 2px; line-height: 1.2; }
+.dog-row-v2 .arrow { color: rgba(255,255,255,0.3); font-size: 14px; }
 
-/* ===== 分割线 & 头部 ===== */
-.dog-divider-v2 { height: 1px; background: rgba(255, 255, 255, 0.08); margin: 4px 8px; flex-shrink: 0; }
+.dog-divider-v2 { height: 1px; background: rgba(255,255,255,0.08); margin: 4px 8px; flex-shrink: 0; }
 .dog-header-v2 { padding: 10px 12px 6px; display: flex; align-items: center; gap: 8px; }
 .dog-header-v2 .logo { font-size: 18px; }
 .dog-header-v2 .name { font-size: 13px; font-weight: 700; color: #fff; flex: 1; }
-.dog-header-v2 .ver { font-size: 10px; color: rgba(255, 255, 255, 0.4); }
+.dog-header-v2 .ver { font-size: 10px; color: rgba(255,255,255,0.4); }
 
-/* ===== 徽章 ===== */
-.dog-badge-on { background: linear-gradient(135deg, #10b981, #059669); color: #fff; font-size: 9px; font-weight: 700; padding: 2px 6px; border-radius: 8px; margin-left: 4px; }
-.dog-badge-off { background: rgba(255, 255, 255, 0.1); color: rgba(255, 255, 255, 0.5); font-size: 9px; font-weight: 700; padding: 2px 6px; border-radius: 8px; margin-left: 4px; }
+.dog-badge-on { background: linear-gradient(135deg,#10b981,#059669); color: #fff; font-size: 9px; font-weight: 700; padding: 2px 6px; border-radius: 8px; margin-left: 4px; }
+.dog-badge-off { background: rgba(255,255,255,0.1); color: rgba(255,255,255,0.5); font-size: 9px; font-weight: 700; padding: 2px 6px; border-radius: 8px; margin-left: 4px; }
 
-/* ===== 模态遮罩 & 面板 ===== */
-.dog-modal-wrapper {
-    position: fixed;
-    inset: 0;
-    background: rgba(0, 0, 0, 0.65);
-    backdrop-filter: blur(8px);
-    -webkit-backdrop-filter: blur(8px);
-    z-index: 2147483645;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    padding: 16px;
-    animation: dogFadeIn 0.2s ease;
-}
+/* ===== 模态 ===== */
+.dog-modal-wrapper { position: fixed; inset: 0; background: rgba(0,0,0,0.65); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); z-index: 2147483645; display: flex; align-items: center; justify-content: center; padding: 16px; animation: dogFadeIn 0.2s ease; }
 @keyframes dogFadeIn { from { opacity: 0; } to { opacity: 1; } }
+.dog-modal-panel { background: linear-gradient(135deg, rgba(40,30,80,0.98), rgba(30,20,60,0.98)); border: 1px solid rgba(255,255,255,0.12); border-radius: 20px; padding: 18px; max-width: 420px; width: 100%; max-height: 85vh; overflow: auto; box-shadow: 0 20px 60px rgba(0,0,0,0.5); }
 
-.dog-modal-panel {
-    background: linear-gradient(135deg, rgba(40, 30, 80, 0.98), rgba(30, 20, 60, 0.98));
-    border: 1px solid rgba(255, 255, 255, 0.12);
-    border-radius: 20px;
-    padding: 18px;
-    max-width: 420px;
-    width: 100%;
-    max-height: 85vh;
-    overflow: auto;
-    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
-}
-
-/* ===== 风格按钮 ===== */
-.dog-poster-btn {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    width: 100%;
-    padding: 12px 14px;
-    border: none;
-    border-radius: 12px;
-    margin-bottom: 8px;
-    cursor: pointer;
-    transition: transform 0.15s;
-    font-family: -apple-system, sans-serif;
-}
+.dog-poster-btn { display: flex; align-items: center; gap: 12px; width: 100%; padding: 12px 14px; border: none; border-radius: 12px; margin-bottom: 8px; cursor: pointer; transition: transform 0.15s; font-family: -apple-system, sans-serif; }
 .dog-poster-btn:hover { transform: translateX(2px); }
 .dog-poster-btn:active { transform: scale(0.98); }
 
-/* ===== 取消按钮 ===== */
-.dog-cancel-btn {
-    width: 100%;
-    padding: 11px;
-    margin-top: 6px;
-    border: none;
-    border-radius: 10px;
-    background: rgba(255, 255, 255, 0.1);
-    color: rgba(255, 255, 255, 0.7);
-    font-weight: 600;
-    font-size: 13px;
-    cursor: pointer;
-    font-family: -apple-system, sans-serif;
-}
-.dog-cancel-btn:hover { background: rgba(255, 255, 255, 0.16); color: #fff; }
+.dog-cancel-btn { width: 100%; padding: 11px; margin-top: 6px; border: none; border-radius: 10px; background: rgba(255,255,255,0.1); color: rgba(255,255,255,0.7); font-weight: 600; font-size: 13px; cursor: pointer; font-family: -apple-system, sans-serif; }
+.dog-cancel-btn:hover { background: rgba(255,255,255,0.16); color: #fff; }
 
-/* ===== 选中生成卡片按钮 ===== */
-.dog-card-btn {
-    position: fixed;
-    z-index: 2147483646;
-    background: linear-gradient(135deg, #667eea, #764ba2);
-    color: #fff;
-    padding: 6px 12px;
-    border-radius: 18px;
-    font-size: 12px;
-    font-weight: 600;
-    cursor: pointer;
-    box-shadow: 0 4px 14px rgba(102, 126, 234, 0.5);
-    user-select: none;
-    -webkit-user-select: none;
-    font-family: -apple-system, sans-serif;
-}
+.dog-card-btn { position: fixed; z-index: 2147483646; background: linear-gradient(135deg,#667eea,#764ba2); color: #fff; padding: 6px 12px; border-radius: 18px; font-size: 12px; font-weight: 600; cursor: pointer; box-shadow: 0 4px 14px rgba(102,126,234,0.5); user-select: none; -webkit-user-select: none; font-family: -apple-system, sans-serif; }
 
-/* ===== 关于卡片 ===== */
-.dog-about-card {
-    background: rgba(255, 255, 255, 0.05);
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    border-radius: 10px;
-    padding: 10px 12px;
-    margin-bottom: 8px;
-    font-size: 12px;
-    color: rgba(255, 255, 255, 0.8);
-    line-height: 1.5;
-}
+.dog-about-card { background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.08); border-radius: 10px; padding: 10px 12px; margin-bottom: 8px; font-size: 12px; color: rgba(255,255,255,0.8); line-height: 1.5; }
 .dog-about-card b { color: #fee140; font-weight: 700; }
 
-/* ===== 扩展面板中的设置样式 ===== */
-#dog_top_settings .inline-drawer-header {
-    cursor: pointer;
-}
-#dog_top_settings .checkbox_label input[type="checkbox"] {
-    width: 16px;
-    height: 16px;
-    cursor: pointer;
-}
+/* ===== 扩展面板 ===== */
+#dog_top_settings .inline-drawer-header { cursor: pointer; }
+#dog_top_settings .checkbox_label input[type="checkbox"] { width: 16px; height: 16px; cursor: pointer; }
