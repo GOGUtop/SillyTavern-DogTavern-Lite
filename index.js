@@ -1,6 +1,6 @@
 /**
- * 🐶 小狗酒馆 Lite v1.3.0
- * 新增：错误码字典 / 重设计悬浮球 / 玻璃拟态UI
+ * 🐶 小狗酒馆 Lite v1.3.1
+ * 修复：悬浮球第二次点不开的 bug
  */
 
 (function () {
@@ -24,179 +24,133 @@
     let lastErrorTime = 0;
 
     // ====================================================
-    // 📖 错误码字典（正则匹配，匹配到就用本地翻译，更精准）
-    // 优先级：从上到下，先匹配到的优先
+    // 📖 错误码字典
     // ====================================================
     const ERROR_DICT = [
-        // === HTTP 状态码 ===
         { re: /HTTP\s*401|unauthorized|invalid[_\s-]?api[_\s-]?key|incorrect api key/i,
           tag: '🔑 密钥错误', level: 'err',
           cn: 'API 密钥无效或已失效',
           fix: '检查 API Key 是否填错、是否过期、是否多了空格。重新去服务商后台复制一次。' },
-
         { re: /HTTP\s*402|insufficient[_\s]?quota|insufficient[_\s]?balance|billing|credit/i,
           tag: '💰 余额不足', level: 'err',
           cn: '账户余额不足或配额用完',
           fix: '去 API 服务商（OpenAI / 中转站）后台充值；或换一个有余额的 Key。' },
-
         { re: /HTTP\s*403|forbidden|permission[_\s]?denied|access[_\s]?denied/i,
           tag: '🚫 无权限', level: 'err',
           cn: '请求被拒绝（权限不足 / IP被封 / 区域限制）',
           fix: '检查 Key 权限范围；OpenAI 要挂代理；中转站可能限制了你的 IP。' },
-
         { re: /HTTP\s*404|model[_\s]?not[_\s]?found|no available channel for model/i,
           tag: '❓ 模型未找到', level: 'err',
           cn: '请求的模型不存在或当前渠道不支持',
           fix: '① 检查模型名拼写（例 gpt-4o、claude-3-5-sonnet）\n② 中转站可能没开通该模型，换个模型或换渠道\n③ New-API 报「No available channel」= 该分组无可用渠道，去后台启用对应模型的渠道。' },
-
         { re: /HTTP\s*429|rate[_\s]?limit|too many requests|too_many_requests/i,
           tag: '🐢 请求过快', level: 'warn',
           cn: '请求频率超限（速率限制）',
           fix: '等待几秒重试；降低请求频率；升级 API 等级；或换其他 Key 轮询。' },
-
         { re: /HTTP\s*500|internal[_\s]?server[_\s]?error/i,
           tag: '💥 服务器爆炸', level: 'err',
           cn: '服务端 500 错误（不是你的问题）',
           fix: '官方/中转站后端崩了，等几分钟重试。频繁出现可换渠道。' },
-
         { re: /HTTP\s*502|bad[_\s]?gateway/i,
           tag: '🌐 网关错误', level: 'err',
           cn: '中间网关挂了 / 后端无响应',
           fix: '通常是中转站到上游断了，等等再试或换渠道。' },
-
         { re: /HTTP\s*503|service[_\s]?unavailable|overloaded/i,
           tag: '⚠️ 服务过载', level: 'err',
           cn: '服务暂时不可用（过载/维护中）',
           fix: 'Claude/Gemini 高峰期常见，等30秒重试；或切到备用渠道。' },
-
         { re: /HTTP\s*504|gateway[_\s]?timeout|timeout/i,
           tag: '⏰ 超时', level: 'warn',
           cn: '请求超时（响应太慢被掐断）',
           fix: '上下文太长会超时 → 减少历史消息、降低 max_tokens；或换个更快的渠道。' },
-
-        // === OpenAI 专用 ===
         { re: /content[_\s]?policy|content[_\s]?filter|safety|usage policies/i,
           tag: '🛡️ 内容审核', level: 'err',
           cn: '内容触发审核（涉黄/暴/政等）',
           fix: '① 修改触发词\n② 用越狱预设\n③ 换不审核的模型（如 Claude 直连第三方、本地模型）\n④ 中转站尝试开「免审通道」' },
-
         { re: /context[_\s]?length[_\s]?exceeded|maximum context length|too many tokens|context_length/i,
           tag: '📏 上下文超长', level: 'err',
           cn: '上下文 token 数超过模型最大限制',
           fix: '① 减少世界书/角色卡内容\n② 降低聊天历史层数（Chat History → Top）\n③ 换大窗口模型（Claude 200K / Gemini 1M）' },
-
         { re: /invalid[_\s]?request[_\s]?error|invalid_parameter|invalid[_\s]?json/i,
           tag: '📝 参数错误', level: 'err',
           cn: '请求参数格式有误',
           fix: '检查 temperature/top_p 是否超范围；预设里有没有非法字段；prompt 是否有空消息。' },
-
-        // === Claude 专用 ===
         { re: /prompt is too long|prompt_too_long/i,
           tag: '📏 Claude上下文超长', level: 'err',
           cn: 'Claude 输入过长',
           fix: '减少历史/世界书；Claude 3.5 上限 200K tokens。' },
-
         { re: /credit balance is too low|low credit/i,
           tag: '💰 Claude余额低', level: 'err',
           cn: 'Anthropic 账户余额过低',
           fix: '去 console.anthropic.com 充值。' },
-
         { re: /claude.*overloaded|anthropic.*overload/i,
           tag: '⚠️ Claude过载', level: 'err',
           cn: 'Claude 服务过载（高峰期常见）',
           fix: '等30秒~1分钟重试；或换中转站节点。' },
-
-        // === Gemini 专用 ===
         { re: /google.*api.*key.*not.*valid|API_KEY_INVALID/i,
           tag: '🔑 Gemini Key 无效', level: 'err',
           cn: 'Google AI Studio API Key 无效',
           fix: '去 aistudio.google.com 重新生成 Key；注意国家不能是中国大陆（用代理改成美国）。' },
-
         { re: /quota.*exceeded.*generativelanguage|RESOURCE_EXHAUSTED/i,
           tag: '💰 Gemini配额用完', level: 'err',
           cn: 'Gemini 免费配额已用完',
           fix: '免费版每分钟15次/每天1500次；等明天重置；或开启计费账号。' },
-
         { re: /SAFETY|safety_settings|harm_category|finishReason.*SAFETY/i,
           tag: '🛡️ Gemini安全过滤', level: 'err',
           cn: 'Gemini 安全过滤拦截了回复',
           fix: '在 ST 设置里把 Gemini 安全等级全部设为 BLOCK_NONE；或换 Pro 模型；或修改触发词。' },
-
-        // === 网络/连接 ===
         { re: /failed to fetch|network[_\s]?error|ECONNREFUSED|connection refused/i,
           tag: '📡 网络错误', level: 'err',
           cn: '无法连接到服务器',
           fix: '① 检查代理是否开启 / TUN模式\n② API 地址写错（少了 /v1 或多了空格）\n③ 服务器宕机' },
-
         { re: /ETIMEDOUT|ESOCKETTIMEDOUT|connection.*timeout/i,
           tag: '⏰ 连接超时', level: 'warn',
           cn: '连接服务器超时',
           fix: '检查网络/代理；或服务器响应过慢。' },
-
         { re: /CORS|cross[_\s]?origin/i,
           tag: '🚧 跨域错误', level: 'err',
           cn: '浏览器跨域(CORS)被拦截',
           fix: '中转站没正确配置 CORS。换中转站或在 ST 服务端配置代理。' },
-
         { re: /SSL|certificate|self[_\s]?signed/i,
           tag: '🔒 SSL证书错误', level: 'err',
           cn: 'SSL 证书校验失败',
           fix: '中转站用了自签证书，可在 config.yaml 里关闭证书校验；或换 https 正规站。' },
-
-        // === SillyTavern 内部 ===
         { re: /chat.*not.*found|character.*not.*found/i,
           tag: '👤 角色丢失', level: 'err',
           cn: '聊天/角色卡未找到',
           fix: '可能是角色卡被删了；尝试重启 ST；从备份恢复。' },
-
         { re: /world[_\s]?info|lorebook.*error/i,
           tag: '📚 世界书错误', level: 'warn',
           cn: '世界书加载错误',
           fix: '检查世界书 JSON 格式；条目过多可分拆。' },
-
         { re: /preset.*not.*found|preset.*invalid/i,
           tag: '⚙️ 预设错误', level: 'err',
           cn: '预设文件错误或丢失',
           fix: '重新导入预设；检查 JSON 是否合法。' },
-
         { re: /extension.*failed|extension.*error/i,
           tag: '🧩 扩展加载失败', level: 'warn',
           cn: '某个扩展加载失败',
           fix: '在 Extensions 里禁用问题扩展；查看控制台具体报错。' },
-
-        { re: /prompt itemization|prompt_itemization/i,
-          tag: '📊 Prompt结构', level: 'info',
-          cn: 'Prompt 结构警告（不影响使用）',
-          fix: '通常无需处理。' },
-
-        // === New-API / OneAPI ===
         { re: /no[_\s]?available[_\s]?channel/i,
           tag: '🔌 无可用渠道', level: 'err',
           cn: 'New-API：当前分组下没有可用渠道',
           fix: '① 后台「渠道」启用对应模型\n② 检查渠道余额/状态\n③ 用户分组要匹配渠道分组' },
-
         { re: /distributor|new_api_error/i,
           tag: '🔌 New-API 分发错误', level: 'err',
           cn: 'New-API 中转站分发失败',
           fix: '查看 New-API 日志；可能是上游 Key 全挂了，去后台检查渠道状态。' },
-
         { re: /channel.*disabled|channel.*banned/i,
           tag: '🔌 渠道被禁用', level: 'err',
           cn: '中转渠道已被禁用',
           fix: '后台启用渠道；或测试上游 Key 是否还有效。' },
-
-        // === JSON / 解析 ===
         { re: /unexpected token|JSON\.parse|invalid json|SyntaxError/i,
           tag: '📝 JSON解析失败', level: 'err',
           cn: '响应不是合法 JSON',
           fix: '通常是上游返回了 HTML 错误页；检查 API 地址是否正确（少了 /v1）。' },
-
         { re: /stream.*error|sse.*error|EventStream/i,
           tag: '📡 流式响应错误', level: 'err',
           cn: '流式(SSE)响应中断',
           fix: '关闭 streaming 试试非流式；或换网络/代理。' },
-
-        // === 兜底 ===
         { re: /error/i, tag: '⚠️ 通用错误', level: 'warn', cn: '检测到错误信息', fix: '查看下方机翻获取详细内容。' },
     ];
 
@@ -427,9 +381,7 @@
         }
     }
 
-    // ====================================================
-    // 微软 Edge 翻译引擎
-    // ====================================================
+    // ============ 微软翻译 ============
     let edgeAuthToken = null;
     let edgeAuthExpire = 0;
     async function getEdgeToken() {
@@ -453,9 +405,7 @@
         return { text: data[0].translations[0].text, from: data[0].detectedLanguage ? data[0].detectedLanguage.language : 'auto' };
     }
 
-    // ====================================================
-    // 划词翻译
-    // ====================================================
+    // ============ 划词翻译 ============
     function injectTranslateUI() {
         if (document.querySelector('[data-dog-tr-btn]')) return;
         const btn = document.createElement('div');
@@ -515,8 +465,7 @@
             background:rgba(255,255,255,0.98);border:2px solid #ff6b6b;
             border-radius:12px;padding:14px;z-index:2147483646;
             box-shadow:0 6px 24px rgba(255,107,107,0.4);
-            font-size:14px;color:#333;
-            font-family:-apple-system,sans-serif;`;
+            font-size:14px;color:#333;font-family:-apple-system,sans-serif;`;
         bubble.innerHTML = `
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
                 <span style="color:#ff6b6b;font-weight:700;font-size:13px;">🌐 翻译中...</span>
@@ -540,7 +489,6 @@
 
         const hasChinese = /[\u4e00-\u9fa5]/.test(text);
         const target = hasChinese ? 'en' : 'zh-Hans';
-
         translateByEdge(text, target).then(({ text: translated, from }) => {
             bubble.querySelector('span').innerHTML = `🌐 ${from} → ${target} ⚡`;
             const c = bubble.querySelector('.dog-tr-content');
@@ -563,9 +511,7 @@
         });
     }
 
-    // ====================================================
-    // 🩺 错误码翻译 - 字典版
-    // ====================================================
+    // ============ 错误码翻译 ============
     function injectErrorCatcher() {
         if (window._dogErrorCatcher) return;
         window._dogErrorCatcher = true;
@@ -620,8 +566,6 @@
         }
         const ageMin = Math.floor((Date.now() - lastErrorTime) / 60000);
         const ageStr = ageMin < 1 ? '刚刚' : ageMin + '分钟前';
-
-        // 字典匹配
         const dictHit = matchErrorDict(lastErrorMsg);
 
         document.querySelectorAll('.dog-err-modal').forEach(el => el.remove());
@@ -661,19 +605,15 @@
                     </span>
                     <span style="font-size:11px;color:rgba(255,255,255,0.5);">${ageStr}</span>
                 </div>
-
                 ${dictHtml}
-
                 <div style="background:rgba(255,107,107,0.12);border-left:3px solid #ff6b6b;padding:10px 12px;border-radius:8px;margin-bottom:12px;max-height:140px;overflow:auto;">
                     <div style="font-size:11px;color:#ff9999;font-weight:700;margin-bottom:4px;">📋 错误原文</div>
                     <div style="font-size:12px;color:#ffe0e0;line-height:1.5;font-family:Consolas,Menlo,monospace;word-break:break-all;white-space:pre-wrap;">${lastErrorMsg.replace(/</g,'&lt;')}</div>
                 </div>
-
                 <div style="background:rgba(130,177,255,0.12);border-left:3px solid #82b1ff;padding:10px 12px;border-radius:8px;margin-bottom:14px;max-height:160px;overflow:auto;">
                     <div style="font-size:11px;color:#a8c1ff;font-weight:700;margin-bottom:4px;">🌐 机器翻译</div>
                     <div id="dog-err-tr" style="font-size:12px;color:#e0e8ff;line-height:1.6;">⚡ 翻译中...</div>
                 </div>
-
                 <div style="display:flex;gap:8px;">
                     <button id="dog-err-copy" style="flex:1;padding:10px;border:none;border-radius:8px;background:linear-gradient(135deg,#ff6b6b,#ee5a6f);color:#fff;font-weight:700;font-size:13px;cursor:pointer;">📋 复制原文</button>
                     <button id="dog-err-close" style="flex:1;padding:10px;border:none;border-radius:8px;background:rgba(255,255,255,0.15);color:#fff;font-weight:700;font-size:13px;cursor:pointer;">关闭</button>
@@ -681,7 +621,6 @@
             </div>
         `;
         document.body.appendChild(wrapper);
-
         wrapper.addEventListener('click', (e) => { if (e.target === wrapper) wrapper.remove(); });
         wrapper.querySelector('#dog-err-close').onclick = () => wrapper.remove();
         wrapper.querySelector('#dog-err-copy').onclick = (e) => {
@@ -706,15 +645,12 @@
         });
     }
 
-    // ====================================================
-    // 长截图
-    // ====================================================
+    // ============ 长截图 ============
     async function generateLongScreenshot(scope = 'all', range = null) {
         showToast('📸 正在合成长截图，请稍候...', 2000);
         try {
             const allMes = Array.from(document.querySelectorAll('#chat .mes, .mes'));
             if (!allMes.length) { showToast('❌ 没找到对话内容'); return; }
-
             let target = allMes;
             if (scope === 'ai') target = allMes.filter(m => m.getAttribute('is_user') !== 'true');
             else if (scope === 'last10') target = allMes.slice(-10);
@@ -811,7 +747,6 @@
                 ctx.fillStyle = '#2d3748';
                 ctx.font = '22px -apple-system,"PingFang SC",sans-serif';
                 b.lines.forEach((ln, i) => { ctx.fillText(ln, txX, cy + 64 + i * 32); });
-
                 cy += b.blockH + gap;
             }
 
@@ -906,12 +841,11 @@
     }
 
     // ====================================================
-    // 🐾 全新悬浮球 + 玻璃拟态菜单
+    // 🐾 悬浮球 + 玻璃拟态菜单（v1.3.1 修复版）
     // ====================================================
     function injectFloatingMenu() {
         if (document.querySelector('[data-dog-tool-folder]')) return;
 
-        // 注入新样式
         if (!document.getElementById('dog-folder-style-v2')) {
             const st = document.createElement('style');
             st.id = 'dog-folder-style-v2';
@@ -922,9 +856,9 @@
                     background:radial-gradient(circle at 30% 30%,#a78bfa,#7c3aed 60%,#4c1d95);
                     box-shadow:0 0 0 1px rgba(255,255,255,0.15) inset, 0 8px 24px rgba(124,58,237,0.55), 0 2px 8px rgba(0,0,0,0.3);
                     display:flex;align-items:center;justify-content:center;font-size:24px;
-                    transition:transform .25s cubic-bezier(.34,1.56,.64,1);
+                    transition:transform .25s cubic-bezier(.34,1.56,.64,1), background .2s;
                     user-select:none;-webkit-user-select:none;-webkit-tap-highlight-color:transparent;
-                    position:relative;
+                    position:relative;color:#fff;
                 }
                 .dog-trigger-v2::before{
                     content:'';position:absolute;inset:-4px;border-radius:50%;
@@ -932,20 +866,25 @@
                     z-index:-1;opacity:0.5;filter:blur(6px);animation:dogSpin 4s linear infinite;
                 }
                 @keyframes dogSpin{to{transform:rotate(360deg);}}
-                .dog-trigger-v2:active{transform:scale(0.9);}
+                .dog-trigger-v2:active{transform:scale(0.92);}
                 .dog-trigger-v2.open{background:radial-gradient(circle at 30% 30%,#fb7185,#e11d48 60%,#881337);}
                 .dog-panel-v2{
-                    position:absolute;right:64px;top:50%;transform:translateY(-50%) scale(0.85);
-                    transform-origin:right center;
+                    position:absolute;right:64px;top:50%;
                     width:230px;padding:8px;
-                    background:rgba(20,20,30,0.78);backdrop-filter:blur(20px) saturate(180%);
+                    background:rgba(20,20,30,0.85);backdrop-filter:blur(20px) saturate(180%);
                     -webkit-backdrop-filter:blur(20px) saturate(180%);
                     border:1px solid rgba(255,255,255,0.12);border-radius:18px;
                     box-shadow:0 20px 50px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.05) inset;
-                    display:none;flex-direction:column;gap:4px;
-                    opacity:0;transition:opacity .2s, transform .25s cubic-bezier(.34,1.56,.64,1);
+                    flex-direction:column;gap:4px;
+                    transform:translateY(-50%) scale(0.85);transform-origin:right center;
+                    opacity:0;pointer-events:none;visibility:hidden;
+                    transition:opacity .2s, transform .25s cubic-bezier(.34,1.56,.64,1), visibility .2s;
+                    display:flex;
                 }
-                .dog-panel-v2.show{display:flex;opacity:1;transform:translateY(-50%) scale(1);}
+                .dog-panel-v2.show{
+                    opacity:1;pointer-events:auto;visibility:visible;
+                    transform:translateY(-50%) scale(1);
+                }
                 .dog-row-v2{
                     display:flex;align-items:center;gap:10px;padding:9px 10px;
                     border-radius:12px;cursor:pointer;color:#fff;
@@ -958,13 +897,11 @@
                     font-size:17px;flex-shrink:0;box-shadow:0 2px 6px rgba(0,0,0,0.3);
                 }
                 .dog-row-v2 .meta{flex:1;min-width:0;}
-                .dog-row-v2 .title{font-size:13px;font-weight:600;line-height:1.2;}
+                .dog-row-v2 .title{font-size:13px;font-weight:600;line-height:1.2;display:flex;align-items:center;}
                 .dog-row-v2 .desc{font-size:10.5px;color:rgba(255,255,255,0.5);margin-top:2px;line-height:1.2;}
                 .dog-row-v2 .arrow{color:rgba(255,255,255,0.3);font-size:14px;}
-                .dog-divider-v2{height:1px;background:rgba(255,255,255,0.08);margin:4px 8px;}
-                .dog-header-v2{
-                    padding:10px 12px 6px;display:flex;align-items:center;gap:8px;
-                }
+                .dog-divider-v2{height:1px;background:rgba(255,255,255,0.08);margin:4px 8px;flex-shrink:0;}
+                .dog-header-v2{padding:10px 12px 6px;display:flex;align-items:center;gap:8px;}
                 .dog-header-v2 .logo{font-size:18px;}
                 .dog-header-v2 .name{font-size:13px;font-weight:700;color:#fff;flex:1;}
                 .dog-header-v2 .ver{font-size:10px;color:rgba(255,255,255,0.4);}
@@ -1013,15 +950,12 @@
 
         function buildPanel() {
             panel.innerHTML = '';
-            // 头部
             const hd = document.createElement('div');
             hd.className = 'dog-header-v2';
             hd.innerHTML = `<span class="logo">🐶🦴</span><span class="name">小狗酒馆 Lite</span><span class="ver">v1.3</span>`;
             panel.appendChild(hd);
-
             const div1 = document.createElement('div'); div1.className = 'dog-divider-v2'; panel.appendChild(div1);
 
-            // 开关组
             panel.appendChild(row(
                 'linear-gradient(135deg,#667eea,#764ba2)',
                 settings.soundEnabled ? '🔊' : '🔇',
@@ -1046,35 +980,16 @@
 
             const div2 = document.createElement('div'); div2.className = 'dog-divider-v2'; panel.appendChild(div2);
 
-            // 工具组
-            panel.appendChild(row(
-                'linear-gradient(135deg,#eb3349,#f45c43)',
-                '🩺', '错误码翻译', '字典+机翻 解析报错',
-                showErrorTranslate
-            ));
-            panel.appendChild(row(
-                'linear-gradient(135deg,#43cea2,#185a9d)',
-                '📸', '长截图', '可选楼层范围导出',
-                showLongShotMenu
-            ));
-            panel.appendChild(row(
-                'linear-gradient(135deg,#f093fb,#f5576c)',
-                '🔖', '生成卡片', '选中AI文字后弹出',
-                () => showToast('💡 请先选中AI消息文字\n再点击弹出的"生成卡片"', 3500)
-            ));
+            panel.appendChild(row('linear-gradient(135deg,#eb3349,#f45c43)', '🩺', '错误码翻译', '字典+机翻 解析报错', showErrorTranslate));
+            panel.appendChild(row('linear-gradient(135deg,#43cea2,#185a9d)', '📸', '长截图', '可选楼层范围导出', showLongShotMenu));
+            panel.appendChild(row('linear-gradient(135deg,#f093fb,#f5576c)', '🔖', '生成卡片', '选中AI文字后弹出',
+                () => showToast('💡 请先选中AI消息文字\n再点击弹出的"生成卡片"', 3500)));
 
             const div3 = document.createElement('div'); div3.className = 'dog-divider-v2'; panel.appendChild(div3);
 
-            panel.appendChild(row(
-                'linear-gradient(135deg,#fa709a,#fee140)',
-                '🎵', '测试提示音', '试听一下叮咚声',
-                () => { if (!settings.soundEnabled) { showToast('🔇 声音已关闭'); return; } playSound(); showToast('🎵 叮咚~'); }
-            ));
-            panel.appendChild(row(
-                'linear-gradient(135deg,#11998e,#38ef7d)',
-                'ℹ️', '关于', '查看插件信息',
-                showAboutDialog
-            ));
+            panel.appendChild(row('linear-gradient(135deg,#fa709a,#fee140)', '🎵', '测试提示音', '试听一下叮咚声',
+                () => { if (!settings.soundEnabled) { showToast('🔇 声音已关闭'); return; } playSound(); showToast('🎵 叮咚~'); }));
+            panel.appendChild(row('linear-gradient(135deg,#11998e,#38ef7d)', 'ℹ️', '关于', '查看插件信息', showAboutDialog));
         }
 
         function expand() {
@@ -1082,18 +997,22 @@
             trigger.classList.add('open');
             trigger.textContent = '✕';
             buildPanel();
-            requestAnimationFrame(() => panel.classList.add('show'));
+            // 强制下一帧加 show，触发动画
+            requestAnimationFrame(() => {
+                requestAnimationFrame(() => panel.classList.add('show'));
+            });
         }
         function collapse() {
             isOpen = false;
             trigger.classList.remove('open');
             trigger.textContent = '🐾';
             panel.classList.remove('show');
-            setTimeout(() => { if (!isOpen) panel.style.display = 'none'; }, 250);
+            // ⚠️ 不再用 setTimeout 设置 display:none —— 这是之前导致"第二次点不开"的元凶
+            // 改为完全靠 CSS 的 visibility/opacity 控制
         }
         window._dogCollapseFolder = collapse;
 
-        // 拖动
+        // ===== 拖动逻辑 =====
         let dragMoved = false, dragging = false;
         let startX = 0, startY = 0, startTop = 0, startLeft = 0;
 
@@ -1116,7 +1035,7 @@
                 folder.style.left = l + 'px';
                 folder.style.right = 'auto';
                 folder.style.transform = 'none';
-                if (isOpen) collapse(); // 拖动时关闭面板
+                if (isOpen) collapse();
             }
         }
         function dragEnd() {
@@ -1163,7 +1082,7 @@
             <div class="dog-modal-panel">
                 <div style="font-size:32px;text-align:center;margin-bottom:8px;">🐶🦴</div>
                 <div style="font-size:19px;font-weight:700;text-align:center;margin-bottom:6px;color:#fff;">小狗酒馆 Lite</div>
-                <div style="font-size:12px;color:rgba(255,255,255,0.55);text-align:center;margin-bottom:18px;">v1.3.0 · 跨平台增强插件</div>
+                <div style="font-size:12px;color:rgba(255,255,255,0.55);text-align:center;margin-bottom:18px;">v1.3.1 · 跨平台增强插件</div>
                 <div class="dog-about-card"><b>🐾 全新悬浮菜单</b><br/>玻璃拟态 / 可拖动 / 位置记忆</div>
                 <div class="dog-about-card"><b>🩺 错误码字典翻译</b><br/>40+ 内置规则 + 机翻兜底</div>
                 <div class="dog-about-card"><b>🔖 选中即生成卡片</b><br/>6种风格精美海报</div>
@@ -1369,7 +1288,7 @@
     }
 
     function init() {
-        console.log(`[${PLUGIN_NAME}] 🐶 v1.3.0 启动中...`);
+        console.log(`[${PLUGIN_NAME}] 🐶 v1.3.1 启动中...`);
         injectFloatingMenu();
         injectSelectionCard();
         injectTranslateUI();
