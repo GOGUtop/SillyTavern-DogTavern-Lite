@@ -1,12 +1,12 @@
 {
-  "display_name": "🐶🦴TOP",
-  "loading_order": 100,
-  "requires": [],
-  "optional": [],
-  "js": "index.js",
-  "css": "style.css",
-  "author": "xixijiuguan",
-  "version": "1.5.1",
-  "homePage": "https://github.com/你的用户名/SillyTavern-DogTop",
-  "auto_update": true
+    "display_name": "🐶🦴TOP",
+    "loading_order": 100,
+    "requires": [],
+    "optional": [],
+    "js": "index.js",
+    "css": "style.css",
+    "author": "xixijiuguan",
+    "version": "1.5.2",
+    "homePage": "",
+    "auto_update": true
 }
