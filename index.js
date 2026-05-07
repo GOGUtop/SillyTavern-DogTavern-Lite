@@ -1,14 +1,12 @@
 /**
- * 🐶🦴TOP v1.5.2
- * 新增：安卓后台系统通知
- * 修复：关于弹窗居中 / 右侧吸附展开
+ * 🐶🦴TOP v1.5.3
+ * 修复：关于弹窗消失 / 通知降级为振动
  */
 
 (function () {
     'use strict';
 
     const PLUGIN_NAME = 'DogTop';
-    const EXTENSION_NAME = 'SillyTavern-DogTop';
     const LS_KEY = 'dog_top_settings';
     const POS_KEY = 'dog_top_folder_pos';
 
@@ -31,48 +29,59 @@
     let lastErrorTime = 0;
 
     // ====================================================
-    // 系统通知
+    // 能力检测（不判断浏览器品牌，直接检测API）
     // ====================================================
-    let notificationPermission = 'default';
+    const NOTIF_SUPPORTED = ('Notification' in window);
+    const VIBRATE_SUPPORTED = ('vibrate' in navigator);
 
+    function getAlertCapability() {
+        const caps = [];
+        if (NOTIF_SUPPORTED && Notification.permission === 'granted') caps.push('通知');
+        if (VIBRATE_SUPPORTED) caps.push('振动');
+        if (caps.length === 0) caps.push('仅Toast');
+        return caps.join('+');
+    }
+
+    // ====================================================
+    // 系统通知 + 振动
+    // ====================================================
     function requestNotificationPermission() {
-        if (!('Notification' in window)) return;
-        if (Notification.permission === 'granted') {
-            notificationPermission = 'granted';
-            return;
-        }
+        if (!NOTIF_SUPPORTED) return;
+        if (Notification.permission === 'granted') return;
         if (Notification.permission !== 'denied') {
             Notification.requestPermission().then(perm => {
-                notificationPermission = perm;
                 if (perm === 'granted') {
-                    showToast('🔔 通知权限已获取！\n后台也能收到提醒了', 3000);
+                    showToast('🔔 通知权限已获取！', 3000);
                 }
             });
         }
     }
 
+    function vibrateDevice(pattern) {
+        if (!VIBRATE_SUPPORTED) return;
+        try { navigator.vibrate(pattern || [200, 100, 200]); } catch (e) {}
+    }
+
     function sendSystemNotification(title, body) {
         if (!settings.notificationEnabled) return;
         if (document.visibilityState === 'visible') return;
-        if (!('Notification' in window)) return;
-        if (Notification.permission !== 'granted') return;
-        try {
-            const notification = new Notification(title, {
-                body: body,
-                icon: 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><text y=".9em" font-size="90">🐶</text></svg>',
-                tag: 'dog-top-' + Date.now(),
-                requireInteraction: false,
-                silent: false
-            });
-            notification.onclick = () => {
-                window.focus();
-                notification.close();
-            };
-            setTimeout(() => {
-                try { notification.close(); } catch (e) {}
-            }, 8000);
-        } catch (e) {
-            console.warn('[DogTop] 通知失败:', e);
+
+        // 振动（大多数安卓浏览器都支持）
+        vibrateDevice([200, 100, 200, 100, 300]);
+
+        // 系统通知（如果支持）
+        if (NOTIF_SUPPORTED && Notification.permission === 'granted') {
+            try {
+                const notification = new Notification(title, {
+                    body: body,
+                    icon: 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><text y=".9em" font-size="90">🐶</text></svg>',
+                    tag: 'dog-top-' + Date.now(),
+                    requireInteraction: false,
+                    silent: false
+                });
+                notification.onclick = () => { window.focus(); notification.close(); };
+                setTimeout(() => { try { notification.close(); } catch (e) {} }, 8000);
+            } catch (e) {}
         }
     }
 
@@ -321,14 +330,19 @@
         const ageStr = ageMin < 1 ? '刚刚' : ageMin + '分钟前';
         const dictHit = matchErrorDict(lastErrorMsg);
         document.querySelectorAll('.dog-err-modal').forEach(el => el.remove());
+
         const wrapper = document.createElement('div'); wrapper.className = 'dog-modal-wrapper dog-err-modal';
         const levelColor = dictHit ? (dictHit.level === 'err' ? '#ff5e5e' : '#ffa726') : '#9e9e9e';
         const dictHtml = dictHit ? `<div style="background:linear-gradient(135deg,rgba(102,126,234,0.18),rgba(118,75,162,0.18));border:1px solid rgba(130,177,255,0.35);border-radius:12px;padding:14px;margin-bottom:12px;"><div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;"><span style="background:${levelColor};color:#fff;font-size:11px;font-weight:700;padding:3px 10px;border-radius:20px;">📖 命中</span><span style="color:#fff;font-weight:700;font-size:15px;">${dictHit.tag}</span></div><div style="background:rgba(0,0,0,0.25);border-radius:8px;padding:10px 12px;margin-bottom:8px;"><div style="font-size:11px;color:#a8c1ff;font-weight:700;margin-bottom:4px;">💡 说明</div><div style="font-size:13px;color:#fff;line-height:1.6;">${dictHit.cn}</div></div><div style="background:rgba(0,0,0,0.25);border-radius:8px;padding:10px 12px;"><div style="font-size:11px;color:#80e0a8;font-weight:700;margin-bottom:4px;">🔧 方案</div><div style="font-size:13px;color:#e0ffe8;line-height:1.7;white-space:pre-wrap;">${dictHit.fix}</div></div></div>` : `<div style="background:rgba(255,167,38,0.12);border:1px dashed rgba(255,167,38,0.4);border-radius:10px;padding:10px 12px;margin-bottom:12px;text-align:center;"><span style="color:#ffb74d;font-size:12px;">📖 字典未命中，看下方机翻 ↓</span></div>`;
         wrapper.innerHTML = `<div class="dog-modal-panel" style="max-width:560px;"><div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;"><span style="font-size:18px;font-weight:700;color:#fff;">🩺 错误码翻译</span><span style="font-size:11px;color:rgba(255,255,255,0.5);">${ageStr}</span></div>${dictHtml}<div style="background:rgba(255,107,107,0.12);border-left:3px solid #ff6b6b;padding:10px 12px;border-radius:8px;margin-bottom:12px;max-height:140px;overflow:auto;"><div style="font-size:11px;color:#ff9999;font-weight:700;margin-bottom:4px;">📋 原文</div><div style="font-size:12px;color:#ffe0e0;line-height:1.5;font-family:monospace;word-break:break-all;white-space:pre-wrap;">${lastErrorMsg.replace(/</g,'&lt;')}</div></div><div style="background:rgba(130,177,255,0.12);border-left:3px solid #82b1ff;padding:10px 12px;border-radius:8px;margin-bottom:14px;max-height:160px;overflow:auto;"><div style="font-size:11px;color:#a8c1ff;font-weight:700;margin-bottom:4px;">🌐 机翻</div><div id="dog-err-tr" style="font-size:12px;color:#e0e8ff;line-height:1.6;">⚡ 翻译中...</div></div><div style="display:flex;gap:8px;"><button id="dog-err-copy" style="flex:1;padding:10px;border:none;border-radius:8px;background:linear-gradient(135deg,#ff6b6b,#ee5a6f);color:#fff;font-weight:700;font-size:13px;cursor:pointer;">📋 复制</button><button id="dog-err-close" style="flex:1;padding:10px;border:none;border-radius:8px;background:rgba(255,255,255,0.15);color:#fff;font-weight:700;font-size:13px;cursor:pointer;">关闭</button></div></div>`;
         document.body.appendChild(wrapper);
-        wrapper.addEventListener('click', (e) => { if (e.target === wrapper) wrapper.remove(); });
-        wrapper.querySelector('#dog-err-close').onclick = () => wrapper.remove();
-        wrapper.querySelector('#dog-err-copy').onclick = (e) => { navigator.clipboard.writeText(lastErrorMsg).then(() => { e.target.textContent = '✅'; setTimeout(() => { e.target.textContent = '📋 复制'; }, 1500); }).catch(() => {}); };
+
+        setTimeout(() => {
+            wrapper.addEventListener('click', (e) => { if (e.target === wrapper) wrapper.remove(); });
+            wrapper.querySelector('#dog-err-close').onclick = () => wrapper.remove();
+            wrapper.querySelector('#dog-err-copy').onclick = (e) => { navigator.clipboard.writeText(lastErrorMsg).then(() => { e.target.textContent = '✅'; setTimeout(() => { e.target.textContent = '📋 复制'; }, 1500); }).catch(() => {}); };
+        }, 100);
+
         translateByEdge((lastErrorMsg.length > 1500 ? lastErrorMsg.slice(0, 1500) : lastErrorMsg), 'zh-Hans').then(({ text }) => { const el = wrapper.querySelector('#dog-err-tr'); if (el) el.innerHTML = text.replace(/</g,'&lt;').replace(/\n/g,'<br>'); }).catch(err => { const el = wrapper.querySelector('#dog-err-tr'); if (el) el.innerHTML = `<span style="color:#ff9999;">❌ ${err.message}</span>`; });
     }
 
@@ -346,11 +360,7 @@
     function applySnap(animate) {
         if (!folderEl) return;
         const ballSize = 54;
-        if (animate) {
-            folderEl.style.transition = 'left 0.3s ease';
-        } else {
-            folderEl.style.transition = 'none';
-        }
+        folderEl.style.transition = animate ? 'left 0.3s ease' : 'none';
         if (currentSnappedSide === 'right') {
             folderEl.style.left = (window.innerWidth - ballSize / 2) + 'px';
         } else {
@@ -415,56 +425,87 @@
         function buildPanel() {
             panel.innerHTML = '';
             panel.classList.remove('panel-left', 'panel-right');
-            if (currentSnappedSide === 'left') {
-                panel.classList.add('panel-left');
-            } else {
-                panel.classList.add('panel-right');
-            }
+            panel.classList.add(currentSnappedSide === 'left' ? 'panel-left' : 'panel-right');
+
             const hd = document.createElement('div'); hd.className = 'dog-header-v2';
-            hd.innerHTML = `<span class="logo">🐶🦴</span><span class="name">🐶🦴TOP</span><span class="ver">v1.5.2</span>`;
+            hd.innerHTML = `<span class="logo">🐶🦴</span><span class="name">🐶🦴TOP</span><span class="ver">v1.5.3</span>`;
             panel.appendChild(hd);
             panel.appendChild(Object.assign(document.createElement('div'), { className: 'dog-divider-v2' }));
 
+            // 提示音
             panel.appendChild(row('linear-gradient(135deg,#667eea,#764ba2)', settings.soundEnabled ? '🔊' : '🔇', '提示音', settings.soundEnabled ? '回复完成叮咚' : '已静音', () => { settings.soundEnabled = !settings.soundEnabled; saveSettings(); showToast(settings.soundEnabled ? '🔊 已开启' : '🔇 已关闭'); if (settings.soundEnabled) playSound(); syncToExtPanel(); }, settings.soundEnabled ? '<span class="dog-badge-on">ON</span>' : '<span class="dog-badge-off">OFF</span>'));
 
+            // 划词翻译
             panel.appendChild(row('linear-gradient(135deg,#ff6b6b,#ee5a6f)', settings.translateEnabled ? '🌐' : '🚫', '划词翻译', settings.translateEnabled ? '选中文字弹出翻译' : '已禁用', () => { settings.translateEnabled = !settings.translateEnabled; saveSettings(); showToast(settings.translateEnabled ? '🌐 已开启' : '🚫 已关闭'); syncToExtPanel(); }, settings.translateEnabled ? '<span class="dog-badge-on">ON</span>' : '<span class="dog-badge-off">OFF</span>'));
 
-            panel.appendChild(row('linear-gradient(135deg,#43e97b,#38f9d7)', settings.notificationEnabled ? '🔔' : '🔕', '后台通知', settings.notificationEnabled ? '后台推送系统通知' : '已禁用', () => {
+            // 后台提醒
+            const notifDesc = settings.notificationEnabled
+                ? (NOTIF_SUPPORTED ? '通知+振动提醒' : (VIBRATE_SUPPORTED ? '振动提醒' : '仅Toast提醒'))
+                : '已禁用';
+            panel.appendChild(row('linear-gradient(135deg,#43e97b,#38f9d7)', settings.notificationEnabled ? '🔔' : '🔕', '后台提醒', notifDesc, () => {
                 settings.notificationEnabled = !settings.notificationEnabled;
                 saveSettings();
                 if (settings.notificationEnabled) {
-                    requestNotificationPermission();
-                    showToast('🔔 后台通知已开启\n退到后台也能收到提醒了', 3000);
+                    if (NOTIF_SUPPORTED) requestNotificationPermission();
+                    vibrateDevice([100, 50, 100]);
+                    const capStr = getAlertCapability();
+                    showToast(`🔔 后台提醒已开启\n当前支持：${capStr}`, 3500);
                 } else {
-                    showToast('🔕 后台通知已关闭');
+                    showToast('🔕 后台提醒已关闭');
                 }
                 syncToExtPanel();
             }, settings.notificationEnabled ? '<span class="dog-badge-on">ON</span>' : '<span class="dog-badge-off">OFF</span>'));
 
             panel.appendChild(Object.assign(document.createElement('div'), { className: 'dog-divider-v2' }));
 
+            // 错误码翻译
             panel.appendChild(row('linear-gradient(135deg,#eb3349,#f45c43)', '🩺', '错误码翻译', '字典+机翻 解析报错', showErrorTranslate));
+
+            // 生成卡片
             panel.appendChild(row('linear-gradient(135deg,#f093fb,#f5576c)', '🔖', '生成卡片', '选中AI文字后弹出', () => showToast('💡 先选中AI消息文字\n再点弹出的"生成卡片"', 3500)));
 
             panel.appendChild(Object.assign(document.createElement('div'), { className: 'dog-divider-v2' }));
 
+            // 测试提示音
             panel.appendChild(row('linear-gradient(135deg,#fa709a,#fee140)', '🎵', '测试提示音', '试听叮咚声', () => { if (!settings.soundEnabled) { showToast('🔇 声音已关闭'); return; } playSound(); showToast('🎵 叮咚~'); }));
 
-            panel.appendChild(row('linear-gradient(135deg,#a18cd1,#fbc2eb)', '🔔', '测试通知', '发一条测试通知', () => {
-                if (!settings.notificationEnabled) { showToast('🔕 后台通知已关闭'); return; }
-                if (!('Notification' in window)) { showToast('❌ 此浏览器不支持通知', 3000); return; }
-                if (Notification.permission === 'denied') { showToast('❌ 通知权限被拒绝\n请在浏览器设置中手动开启', 4000); return; }
-                if (Notification.permission !== 'granted') { requestNotificationPermission(); showToast('📝 正在请求通知权限...', 2500); return; }
+            // 测试提醒
+            panel.appendChild(row('linear-gradient(135deg,#a18cd1,#fbc2eb)', '🔔', '测试提醒', '测试振动/通知', () => {
+                if (!settings.notificationEnabled) { showToast('🔕 后台提醒已关闭'); return; }
+
+                // 先振动
+                vibrateDevice([200, 100, 200, 100, 300]);
+
+                if (!NOTIF_SUPPORTED) {
+                    if (VIBRATE_SUPPORTED) {
+                        showToast('📳 振动已触发！\n此浏览器不支持系统通知\n振动提醒可正常工作', 4000);
+                    } else {
+                        showToast('ℹ️ 此浏览器不支持通知和振动\n后台切回时会显示Toast提醒', 4000);
+                    }
+                    return;
+                }
+                if (Notification.permission === 'denied') {
+                    showToast('📳 振动已触发！\n通知权限被拒绝\n请在浏览器设置中手动开启', 4000);
+                    return;
+                }
+                if (Notification.permission !== 'granted') {
+                    requestNotificationPermission();
+                    showToast('📝 正在请求通知权限...\n振动已触发', 2500);
+                    return;
+                }
                 try {
                     new Notification('🐶🦴TOP 测试通知', {
-                        body: '如果你看到这条通知，说明后台通知功能正常！退到后台也能收到AI回复提醒了～',
+                        body: '通知+振动都正常！退到后台也能收到提醒了～',
                         icon: 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><text y=".9em" font-size="90">🐶</text></svg>',
                         tag: 'dog-top-test'
                     });
-                    showToast('✅ 测试通知已发送！\n检查通知栏看看', 3000);
-                } catch (e) { showToast('❌ 发送失败：' + e.message, 3500); }
+                    showToast('✅ 通知+振动已发送！', 3000);
+                } catch (e) {
+                    showToast('📳 振动OK，通知失败：' + e.message, 3500);
+                }
             }));
 
+            // 关于
             panel.appendChild(row('linear-gradient(135deg,#11998e,#38ef7d)', 'ℹ️', '关于', '查看插件信息', showAboutDialog));
         }
 
@@ -519,11 +560,7 @@
                 const centerX = rect.left + rect.width / 2;
                 currentTop = Math.max(0, Math.min(window.innerHeight - rect.height, rect.top));
                 folder.style.top = currentTop + 'px';
-                if (centerX < window.innerWidth / 2) {
-                    currentSnappedSide = 'left';
-                } else {
-                    currentSnappedSide = 'right';
-                }
+                currentSnappedSide = centerX < window.innerWidth / 2 ? 'left' : 'right';
                 applySnap(true);
                 savePosition();
             }
@@ -536,9 +573,7 @@
         document.addEventListener('mousemove', (e) => { if (dragging) dragMove(e.clientX, e.clientY); });
         document.addEventListener('mouseup', () => { if (!dragging) return; const m = dragMoved; dragEnd(); if (!m && !('ontouchstart' in window)) { isMenuOpen ? collapse() : expand(); } });
 
-        window.addEventListener('resize', () => {
-            if (!isMenuOpen) applySnap(false);
-        });
+        window.addEventListener('resize', () => { if (!isMenuOpen) applySnap(false); });
 
         folder.appendChild(trigger);
         folder.appendChild(panel);
@@ -546,23 +581,34 @@
         if (!settings.floatEnabled) folder.style.display = 'none';
     }
 
+    // ============ 关于弹窗（延迟弹出防误关） ============
     function showAboutDialog() {
-        const wrapper = document.createElement('div'); wrapper.className = 'dog-modal-wrapper';
-        wrapper.innerHTML = `<div class="dog-modal-panel" style="max-width:380px;max-height:70vh;overflow-y:auto;">
-            <div style="font-size:32px;text-align:center;margin-bottom:8px;">🐶🦴</div>
-            <div style="font-size:19px;font-weight:700;text-align:center;margin-bottom:6px;color:#fff;">🐶🦴TOP</div>
-            <div style="font-size:12px;color:rgba(255,255,255,0.55);text-align:center;margin-bottom:18px;">v1.5.2 · 跨平台增强插件</div>
-            <div class="dog-about-card"><b>🐾 玻璃拟态菜单</b><br/>可拖动 / 边缘吸附 / 位置记忆</div>
-            <div class="dog-about-card"><b>🔔 后台系统通知</b><br/>退到后台也能收到AI回复提醒（安卓）</div>
-            <div class="dog-about-card"><b>🩺 错误码字典翻译</b><br/>40+ 内置规则 + 机翻兜底</div>
-            <div class="dog-about-card"><b>🔖 选中即生成卡片</b><br/>6种风格精美海报</div>
-            <div class="dog-about-card"><b>🌐 划词翻译</b><br/>微软Edge引擎</div>
-            <div class="dog-about-card"><b>🔊 智能AI提示音</b><br/>完成/截断/空回三种提醒</div>
-            <button class="dog-cancel-btn" id="dog-about-close">关闭</button>
-        </div>`;
-        document.body.appendChild(wrapper);
-        wrapper.addEventListener('click', (e) => { if (e.target === wrapper) wrapper.remove(); });
-        wrapper.querySelector('#dog-about-close').onclick = () => wrapper.remove();
+        setTimeout(() => {
+            const capStr = getAlertCapability();
+            const wrapper = document.createElement('div'); wrapper.className = 'dog-modal-wrapper';
+            wrapper.innerHTML = `<div class="dog-modal-panel" style="max-width:380px;">
+                <div style="font-size:32px;text-align:center;margin-bottom:8px;">🐶🦴</div>
+                <div style="font-size:19px;font-weight:700;text-align:center;margin-bottom:6px;color:#fff;">🐶🦴TOP</div>
+                <div style="font-size:12px;color:rgba(255,255,255,0.55);text-align:center;margin-bottom:18px;">v1.5.3 · 跨平台增强插件</div>
+                <div class="dog-about-card"><b>🐾 玻璃拟态菜单</b><br/>可拖动 / 边缘吸附 / 位置记忆</div>
+                <div class="dog-about-card"><b>🔔 后台提醒</b><br/>当前支持：${capStr}</div>
+                <div class="dog-about-card"><b>🩺 错误码字典翻译</b><br/>40+ 内置规则 + 机翻兜底</div>
+                <div class="dog-about-card"><b>🔖 选中即生成卡片</b><br/>6种风格精美海报</div>
+                <div class="dog-about-card"><b>🌐 划词翻译</b><br/>微软Edge引擎</div>
+                <div class="dog-about-card"><b>🔊 智能AI提示音</b><br/>完成/截断/空回三种提醒</div>
+                <div style="margin-top:12px;padding:10px;background:rgba(255,255,255,0.05);border-radius:8px;font-size:11px;color:rgba(255,255,255,0.4);text-align:center;line-height:1.5;">
+                    通知: ${NOTIF_SUPPORTED ? '✅' : '❌'} · 振动: ${VIBRATE_SUPPORTED ? '✅' : '❌'}<br/>
+                    浏览器: ${navigator.userAgent.slice(-40)}
+                </div>
+                <button class="dog-cancel-btn" id="dog-about-close" style="margin-top:12px;">关闭</button>
+            </div>`;
+            document.body.appendChild(wrapper);
+            // 延迟绑定关闭事件
+            setTimeout(() => {
+                wrapper.addEventListener('click', (e) => { if (e.target === wrapper) wrapper.remove(); });
+                wrapper.querySelector('#dog-about-close').onclick = () => wrapper.remove();
+            }, 150);
+        }, 350);
     }
 
     // ============ 选中文字 → 卡片 ============
@@ -590,12 +636,15 @@
         STYLES.forEach(s => { html += `<button data-style="${s.idx}" class="dog-poster-btn" style="background:${s.btnBg};color:${s.btnColor};"><span style="font-size:24px;flex-shrink:0;">${s.emoji}</span><span style="flex:1;min-width:0;text-align:left;"><span style="display:block;font-size:14px;font-weight:700;">${s.name}</span><span style="display:block;font-size:11px;opacity:0.75;margin-top:2px;">${s.desc}</span></span><span style="font-size:16px;opacity:0.5;">›</span></button>`; });
         html += `<button class="dog-cancel-btn" id="dog-poster-cancel">取消</button>`;
         pd.innerHTML = html; wrapper.appendChild(pd); document.body.appendChild(wrapper);
-        wrapper.addEventListener('click', (e) => { if (e.target === wrapper) wrapper.remove(); });
-        pd.querySelector('#dog-poster-cancel').onclick = () => wrapper.remove();
-        pd.querySelectorAll('.dog-poster-btn').forEach(b => { b.onclick = () => { const si = parseInt(b.getAttribute('data-style')); const nn = mes.querySelector('.ch_name .name_text') || mes.querySelector('.name_text') || mes.querySelector('.ch_name'); const cn = nn ? (nn.innerText || nn.textContent || '').trim() : ''; const ai = mes.querySelector('.avatar img') || mes.querySelector('img.avatar') || mes.querySelector('img'); const au = ai ? (ai.src || '') : ''; generateCard(text, cn, au, si); wrapper.remove(); }; });
+
+        setTimeout(() => {
+            wrapper.addEventListener('click', (e) => { if (e.target === wrapper) wrapper.remove(); });
+            pd.querySelector('#dog-poster-cancel').onclick = () => wrapper.remove();
+            pd.querySelectorAll('.dog-poster-btn').forEach(b => { b.onclick = () => { const si = parseInt(b.getAttribute('data-style')); const nn = mes.querySelector('.ch_name .name_text') || mes.querySelector('.name_text') || mes.querySelector('.ch_name'); const cn = nn ? (nn.innerText || nn.textContent || '').trim() : ''; const ai = mes.querySelector('.avatar img') || mes.querySelector('img.avatar') || mes.querySelector('img'); const au = ai ? (ai.src || '') : ''; generateCard(text, cn, au, si); wrapper.remove(); }; });
+        }, 100);
     }
 
-    // ============ AI 生成事件（含系统通知） ============
+    // ============ AI 生成事件 ============
     function attachGenerationHooks() {
         let manualStop = false, finishReason = 'unknown';
 
@@ -659,9 +708,7 @@
                 window._dogHasError = false;
             });
 
-            es.on('generation_stopped', () => {
-                manualStop = true;
-            });
+            es.on('generation_stopped', () => { manualStop = true; });
 
             es.on('generation_ended', () => {
                 Promise.resolve().then(() => {
@@ -738,13 +785,10 @@
     // ====================================================
     function injectExtensionPanel() {
         const targetContainer = document.getElementById('extensions_settings2') || document.getElementById('extensions_settings');
-        if (!targetContainer) { console.warn('[DogTop] 容器未找到，重试...'); setTimeout(injectExtensionPanel, 1000); return; }
+        if (!targetContainer) { setTimeout(injectExtensionPanel, 1000); return; }
         if (document.getElementById('dog_top_settings')) return;
 
-        const notifSupported = ('Notification' in window);
-        const notifStatus = notifSupported
-            ? (Notification.permission === 'granted' ? '✅ 已授权' : (Notification.permission === 'denied' ? '❌ 被拒绝' : '📝 待授权'))
-            : '❌ 不支持';
+        const capStr = getAlertCapability();
 
         const settingsHtml = `
         <div id="dog_top_settings">
@@ -779,15 +823,15 @@
                         <div style="margin-bottom:14px;">
                             <label class="checkbox_label" style="display:flex;align-items:center;gap:8px;cursor:pointer;margin-bottom:4px;">
                                 <input id="dog_top_notif_toggle" type="checkbox" ${settings.notificationEnabled ? 'checked' : ''} />
-                                <span>🔔 后台系统通知</span>
+                                <span>🔔 后台提醒</span>
                             </label>
-                            <small style="color:var(--SmartThemeQuoteColor);margin-left:26px;">退到后台时推送系统通知（${notifStatus}）</small>
+                            <small style="color:var(--SmartThemeQuoteColor);margin-left:26px;">当前支持：${capStr}</small>
                         </div>
                         <hr style="border:none;border-top:1px solid var(--SmartThemeBorderColor);margin:14px 0;" />
                         <div style="color:var(--SmartThemeQuoteColor);font-size:12px;line-height:1.6;">
-                            <p style="margin:0 0 4px;">🐶🦴TOP v1.5.2</p>
-                            <p style="margin:0 0 4px;">悬浮球 / 卡片生成 / 错误码翻译 / 划词翻译 / AI提示音 / 后台通知</p>
-                            <p style="margin:0;">⚠️ 后台通知需要 HTTPS 且浏览器允许通知权限</p>
+                            <p style="margin:0 0 4px;">🐶🦴TOP v1.5.3</p>
+                            <p style="margin:0 0 4px;">悬浮球 / 卡片 / 错误码翻译 / 划词翻译 / 提示音 / 后台提醒</p>
+                            <p style="margin:0;">通知: ${NOTIF_SUPPORTED ? '✅' : '❌'} · 振动: ${VIBRATE_SUPPORTED ? '✅' : '❌'}</p>
                         </div>
                     </div>
                 </div>
@@ -818,10 +862,11 @@
             if (nt) nt.addEventListener('change', (e) => {
                 settings.notificationEnabled = e.target.checked; saveSettings();
                 if (settings.notificationEnabled) {
-                    requestNotificationPermission();
-                    showToast('🔔 后台通知已开启', 2500);
+                    if (NOTIF_SUPPORTED) requestNotificationPermission();
+                    vibrateDevice([100, 50, 100]);
+                    showToast(`🔔 后台提醒已开启\n当前支持：${getAlertCapability()}`, 3000);
                 } else {
-                    showToast('🔕 后台通知已关闭');
+                    showToast('🔕 后台提醒已关闭');
                 }
             });
         }, 100);
@@ -844,9 +889,9 @@
     // 🚀 初始化
     // ====================================================
     function init() {
-        console.log(`[${PLUGIN_NAME}] 🐶🦴TOP v1.5.2 启动...`);
+        console.log(`[${PLUGIN_NAME}] 🐶🦴TOP v1.5.3 启动...`);
 
-        requestNotificationPermission();
+        if (NOTIF_SUPPORTED) requestNotificationPermission();
         injectExtensionPanel();
         injectFloatingMenu();
         injectSelectionCard();
@@ -854,7 +899,7 @@
         injectErrorCatcher();
         attachGenerationHooks();
 
-        console.log(`[${PLUGIN_NAME}] ✅ OK`);
+        console.log(`[${PLUGIN_NAME}] ✅ OK | 通知:${NOTIF_SUPPORTED} 振动:${VIBRATE_SUPPORTED}`);
     }
 
     if (typeof jQuery !== 'undefined') {
