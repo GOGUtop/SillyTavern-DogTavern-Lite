@@ -1,6 +1,8 @@
 /**
- * 🐶 小狗酒馆 Lite v1.3.1
- * 修复：悬浮球第二次点不开的 bug
+ * 🐶 小狗酒馆 Lite v1.3.2
+ * 修复：
+ *  - 长截图抓到思维链/代码块的问题（现在只截可见正文）
+ *  - 手机端 Toast 弹窗位置过高（改为底部锚点）
  */
 
 (function () {
@@ -162,22 +164,38 @@
         return null;
     }
 
-    // ============ Toast ============
+    // ============ 工具：是否移动端 ============
+    function isMobileDevice() {
+        return window.innerWidth < 768 || ('ontouchstart' in window) ||
+               /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent);
+    }
+
+    // ============ Toast（修复手机端位置过高）============
     function showToast(msg, duration = 2500) {
         const old = document.getElementById('dog-toast');
         if (old) old.remove();
         const t = document.createElement('div');
         t.id = 'dog-toast';
         t.textContent = msg;
+
+        // ⭐ 修复点：移动端使用底部锚点，避免被浏览器顶栏/虚拟键盘视觉挤压到偏上
+        const mobile = isMobileDevice();
+        const posCss = mobile
+            ? 'left:50%;bottom:18%;transform:translateX(-50%);'
+            : 'left:50%;top:50%;transform:translate(-50%,-50%);';
+
         t.style.cssText = `
-            position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);
+            position:fixed;${posCss}
             z-index:2147483647;background:linear-gradient(135deg,#667eea,#764ba2);
             color:#fff;padding:14px 24px;border-radius:30px;font-size:15px;
             font-weight:600;box-shadow:0 8px 24px rgba(0,0,0,0.4);
             font-family:-apple-system,sans-serif;max-width:80vw;text-align:center;
-            white-space:pre-line;pointer-events:none;`;
+            white-space:pre-line;pointer-events:none;
+            opacity:0;transition:opacity .25s ease;`;
         document.body.appendChild(t);
-        setTimeout(() => { t.style.opacity = '0'; t.style.transition = 'opacity .3s'; }, duration - 300);
+        // 入场淡入
+        requestAnimationFrame(() => { t.style.opacity = '1'; });
+        setTimeout(() => { t.style.opacity = '0'; }, duration - 300);
         setTimeout(() => { try { t.remove(); } catch (e) {} }, duration);
     }
 
@@ -209,6 +227,50 @@
             .replace(/&nbsp;/g, ' ').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
             .replace(/&amp;/g, '&').replace(/&quot;/g, '"')
             .replace(/\n{3,}/g, '\n\n').trim();
+    }
+
+    // ⭐ 新增：从 .mes_text 中提取「干净正文」，剔除思维链 / 代码块 / 编辑框
+    function extractCleanMesText(mesEl) {
+        if (!mesEl) return '';
+        // 1. 优先用 .mes_text；如果没有则退到整个 .mes
+        const textEl = mesEl.querySelector('.mes_text') || mesEl;
+        const clone = textEl.cloneNode(true);
+
+        // 2. 移除 ST 自带的 reasoning / 思维链 / 编辑区 / 折叠区 / 代码
+        const killSelectors = [
+            '.mes_reasoning',
+            '.mes_reasoning_details',
+            '.mes_reasoning_header',
+            '.mes_reasoning_content',
+            '.reasoning',
+            '.reasoning_content',
+            '.thinking',
+            'details',
+            'summary',
+            'pre',
+            'code',
+            '.edit_textarea',
+            '.mes_edit_buttons',
+            '.mes_buttons',
+            'thinking',
+            'think',
+            'reasoning'
+        ];
+        clone.querySelectorAll(killSelectors.join(',')).forEach(n => n.remove());
+
+        // 3. 处理「以纯文本形式残留」的思维链/代码标签
+        let html = clone.innerHTML || '';
+        html = html
+            .replace(/<thinking[\s\S]*?<\/thinking>/gi, '')
+            .replace(/<think[\s\S]*?<\/think>/gi, '')
+            .replace(/<reasoning[\s\S]*?<\/reasoning>/gi, '')
+            .replace(/<reflection[\s\S]*?<\/reflection>/gi, '')
+            // markdown 三反引号代码块 → 占位符
+            .replace(/```[\s\S]*?```/g, '〔代码块〕')
+            // 行内 ` ` 代码
+            .replace(/`([^`\n]{1,80})`/g, '$1');
+
+        return stripHtml(html);
     }
 
     // ============ 卡片风格 ============
@@ -673,16 +735,18 @@
                 const mesId = mes.getAttribute('mesid') || '';
                 const nameEl = mes.querySelector('.ch_name .name_text') || mes.querySelector('.name_text');
                 const name = nameEl ? (nameEl.innerText || nameEl.textContent || '').trim() : (isUser ? '你' : 'AI');
-                const mesEl = mes.querySelector('.mes_text');
-                const text = mesEl ? stripHtml(mesEl.innerHTML) : '';
+
+                // ⭐ 修复点：用干净文本提取器，剔除思维链 / 代码块 / 折叠区
+                const text = extractCleanMesText(mes);
                 if (!text) continue;
+
                 const avImg = mes.querySelector('.avatar img') || mes.querySelector('img.avatar') || mes.querySelector('img');
                 const avSrc = avImg ? avImg.src : '';
                 const lines = wrapText(tmp, text, W - padding * 2 - avatarSize - 20);
                 const blockH = Math.max(avatarSize + 10, 40 + lines.length * 32 + 20);
                 blocks.push({ isUser, name, text, lines, avSrc, blockH, mesId });
             }
-            if (!blocks.length) { showToast('❌ 没有可用文字内容'); return; }
+            if (!blocks.length) { showToast('❌ 没有可用文字内容（可能全部是思维链/代码）'); return; }
 
             const headerH = 110, footerH = 70;
             const totalH = headerH + blocks.reduce((s, b) => s + b.blockH + gap, 0) + footerH;
@@ -841,7 +905,7 @@
     }
 
     // ====================================================
-    // 🐾 悬浮球 + 玻璃拟态菜单（v1.3.1 修复版）
+    // 🐾 悬浮球 + 玻璃拟态菜单
     // ====================================================
     function injectFloatingMenu() {
         if (document.querySelector('[data-dog-tool-folder]')) return;
@@ -952,7 +1016,7 @@
             panel.innerHTML = '';
             const hd = document.createElement('div');
             hd.className = 'dog-header-v2';
-            hd.innerHTML = `<span class="logo">🐶🦴</span><span class="name">小狗酒馆 Lite</span><span class="ver">v1.3</span>`;
+            hd.innerHTML = `<span class="logo">🐶🦴</span><span class="name">小狗酒馆 Lite</span><span class="ver">v1.3.2</span>`;
             panel.appendChild(hd);
             const div1 = document.createElement('div'); div1.className = 'dog-divider-v2'; panel.appendChild(div1);
 
@@ -997,7 +1061,6 @@
             trigger.classList.add('open');
             trigger.textContent = '✕';
             buildPanel();
-            // 强制下一帧加 show，触发动画
             requestAnimationFrame(() => {
                 requestAnimationFrame(() => panel.classList.add('show'));
             });
@@ -1007,8 +1070,6 @@
             trigger.classList.remove('open');
             trigger.textContent = '🐾';
             panel.classList.remove('show');
-            // ⚠️ 不再用 setTimeout 设置 display:none —— 这是之前导致"第二次点不开"的元凶
-            // 改为完全靠 CSS 的 visibility/opacity 控制
         }
         window._dogCollapseFolder = collapse;
 
@@ -1082,12 +1143,12 @@
             <div class="dog-modal-panel">
                 <div style="font-size:32px;text-align:center;margin-bottom:8px;">🐶🦴</div>
                 <div style="font-size:19px;font-weight:700;text-align:center;margin-bottom:6px;color:#fff;">小狗酒馆 Lite</div>
-                <div style="font-size:12px;color:rgba(255,255,255,0.55);text-align:center;margin-bottom:18px;">v1.3.1 · 跨平台增强插件</div>
+                <div style="font-size:12px;color:rgba(255,255,255,0.55);text-align:center;margin-bottom:18px;">v1.3.2 · 跨平台增强插件</div>
                 <div class="dog-about-card"><b>🐾 全新悬浮菜单</b><br/>玻璃拟态 / 可拖动 / 位置记忆</div>
                 <div class="dog-about-card"><b>🩺 错误码字典翻译</b><br/>40+ 内置规则 + 机翻兜底</div>
                 <div class="dog-about-card"><b>🔖 选中即生成卡片</b><br/>6种风格精美海报</div>
                 <div class="dog-about-card"><b>🌐 划词翻译</b><br/>选中文字秒翻</div>
-                <div class="dog-about-card"><b>📸 长截图（可选楼层）</b><br/>支持自定义起止楼层</div>
+                <div class="dog-about-card"><b>📸 长截图（智能过滤）</b><br/>自动剔除思维链与代码块</div>
                 <div class="dog-about-card"><b>🔊 智能AI提示音</b><br/>完成/截断/空回三种提醒</div>
                 <button class="dog-cancel-btn" id="dog-about-close">关闭</button>
             </div>
@@ -1288,7 +1349,7 @@
     }
 
     function init() {
-        console.log(`[${PLUGIN_NAME}] 🐶 v1.3.1 启动中...`);
+        console.log(`[${PLUGIN_NAME}] 🐶 v1.3.2 启动中...`);
         injectFloatingMenu();
         injectSelectionCard();
         injectTranslateUI();
