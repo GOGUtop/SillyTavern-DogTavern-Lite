@@ -1,17 +1,18 @@
 /**
  * 🐶🦴TOP v1.5.0
  * 修复：
- *  - 在扩展程序面板中正确显示
- *  - 增加开关控制悬浮球显示/隐藏
- *  - 悬浮球边缘吸附（50%露出）
- *  - 移除长截图功能（iOS不兼容）
- *  - 插件名改为 🐶🦴TOP
+ *  1. 在扩展程序列表中正确显示（注入 inline-drawer 到 extensions_settings2）
+ *  2. 移除长截图功能（iOS不兼容）
+ *  3. 增加开关按钮控制悬浮球
+ *  4. 悬浮球边缘吸附（50%露出）
+ *  5. 插件名改为 🐶🦴TOP
  */
 
 (function () {
     'use strict';
 
     const PLUGIN_NAME = 'DogTop';
+    const EXTENSION_NAME = 'SillyTavern-DogTop';
     const LS_KEY = 'dog_top_settings';
     const POS_KEY = 'dog_top_folder_pos';
 
@@ -88,21 +89,11 @@
         const t = document.createElement('div');
         t.id = 'dog-toast';
         t.textContent = msg;
-
         const mobile = isMobileDevice();
         const posCss = mobile
             ? 'left:50%;top:18%;transform:translateX(-50%);'
             : 'left:50%;top:50%;transform:translate(-50%,-50%);';
-
-        t.style.cssText = `
-            position:fixed;${posCss}
-            z-index:2147483647;background:linear-gradient(135deg,#667eea,#764ba2);
-            color:#fff;padding:14px 24px;border-radius:30px;font-size:15px;
-            font-weight:600;
-            box-shadow:0 8px 24px rgba(0,0,0,0.5), 0 0 0 2px rgba(255,255,255,0.15);
-            font-family:-apple-system,sans-serif;max-width:80vw;text-align:center;
-            white-space:pre-line;pointer-events:none;
-            opacity:0;transition:opacity .25s ease;`;
+        t.style.cssText = `position:fixed;${posCss}z-index:2147483647;background:linear-gradient(135deg,#667eea,#764ba2);color:#fff;padding:14px 24px;border-radius:30px;font-size:15px;font-weight:600;box-shadow:0 8px 24px rgba(0,0,0,0.5),0 0 0 2px rgba(255,255,255,0.15);font-family:-apple-system,sans-serif;max-width:80vw;text-align:center;white-space:pre-line;pointer-events:none;opacity:0;transition:opacity .25s ease;`;
         document.body.appendChild(t);
         requestAnimationFrame(() => { t.style.opacity = '1'; });
         setTimeout(() => { t.style.opacity = '0'; }, duration - 300);
@@ -120,23 +111,18 @@
             [[880, 0], [1320, 0.12]].forEach(([freq, delay]) => {
                 const osc = audioCtx.createOscillator();
                 const gain = audioCtx.createGain();
-                osc.type = 'sine';
-                osc.frequency.value = freq;
+                osc.type = 'sine'; osc.frequency.value = freq;
                 gain.gain.setValueAtTime(0, now + delay);
                 gain.gain.linearRampToValueAtTime(0.25, now + delay + 0.02);
                 gain.gain.exponentialRampToValueAtTime(0.001, now + delay + 0.35);
                 osc.connect(gain); gain.connect(audioCtx.destination);
-                osc.start(now + delay);
-                osc.stop(now + delay + 0.4);
+                osc.start(now + delay); osc.stop(now + delay + 0.4);
             });
         } catch (e) {}
     }
 
     function stripHtml(s) {
-        return (s || '').replace(/<[^>]+>/g, '')
-            .replace(/&nbsp;/g, ' ').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
-            .replace(/&amp;/g, '&').replace(/&quot;/g, '"')
-            .replace(/\n{3,}/g, '\n\n').trim();
+        return (s || '').replace(/<[^>]+>/g, '').replace(/&nbsp;/g, ' ').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&').replace(/&quot;/g, '"').replace(/\n{3,}/g, '\n\n').trim();
     }
 
     // ============ 卡片风格 ============
@@ -152,15 +138,9 @@
     function loadImage(url) {
         return new Promise((resolve) => {
             if (!url) return resolve(null);
-            const img = new Image();
-            img.crossOrigin = 'anonymous';
+            const img = new Image(); img.crossOrigin = 'anonymous';
             img.onload = () => resolve(img);
-            img.onerror = () => {
-                const img2 = new Image();
-                img2.onload = () => resolve(img2);
-                img2.onerror = () => resolve(null);
-                img2.src = url;
-            };
+            img.onerror = () => { const img2 = new Image(); img2.onload = () => resolve(img2); img2.onerror = () => resolve(null); img2.src = url; };
             img.src = url;
         });
     }
@@ -170,130 +150,70 @@
         const cleanText = stripHtml(rawText);
         const displayText = cleanText.length > 600 ? cleanText.slice(0, 600) + '…' : cleanText;
         const W = 1080, padding = 80;
-        const canvas = document.createElement('canvas');
-        canvas.width = W;
+        const canvas = document.createElement('canvas'); canvas.width = W;
         const ctx = canvas.getContext('2d');
         ctx.font = '40px "Songti SC","Noto Serif SC","SimSun",serif';
         const lines = wrapText(ctx, displayText, W - padding * 2);
-        const lineHeight = 54;
-        const textBlockH = lines.length * lineHeight;
+        const lineHeight = 54, textBlockH = lines.length * lineHeight;
         const headerH = 200, footerH = 120, quoteGap = 110;
         const totalH = Math.max(900, headerH + quoteGap + textBlockH + 60 + footerH);
         canvas.height = totalH;
         const g = ctx.createLinearGradient(0, 0, 0, totalH);
         g.addColorStop(0, st.bg1); g.addColorStop(1, st.bg2);
         ctx.fillStyle = g; ctx.fillRect(0, 0, W, totalH);
-        const seed = hashCode(charName + styleIdx);
-        const rand = mulberry32(seed);
+        const seed = hashCode(charName + styleIdx), rand = mulberry32(seed);
         ctx.fillStyle = st.spark;
-        for (let i = 0; i < 35; i++) {
-            ctx.globalAlpha = rand() * 0.25 + 0.08;
-            ctx.beginPath(); ctx.arc(rand() * W, rand() * totalH, rand() * 2.5 + 0.8, 0, Math.PI * 2); ctx.fill();
-        }
+        for (let i = 0; i < 35; i++) { ctx.globalAlpha = rand() * 0.25 + 0.08; ctx.beginPath(); ctx.arc(rand() * W, rand() * totalH, rand() * 2.5 + 0.8, 0, Math.PI * 2); ctx.fill(); }
         ctx.globalAlpha = 1;
-        ctx.fillStyle = st.accent; ctx.globalAlpha = 0.7;
-        ctx.fillRect(0, 0, W, 5); ctx.fillRect(0, totalH - 5, W, 5);
-        ctx.globalAlpha = 1;
-        const avatarSize = 120;
-        const ax = padding + avatarSize / 2, ay = padding + avatarSize / 2;
+        ctx.fillStyle = st.accent; ctx.globalAlpha = 0.7; ctx.fillRect(0, 0, W, 5); ctx.fillRect(0, totalH - 5, W, 5); ctx.globalAlpha = 1;
+        const avatarSize = 120, ax = padding + avatarSize / 2, ay = padding + avatarSize / 2;
         const avatar = await loadImage(avatarUrl);
         ctx.strokeStyle = st.accent; ctx.lineWidth = 4; ctx.globalAlpha = 0.6;
-        ctx.beginPath(); ctx.arc(ax, ay, avatarSize / 2 + 6, 0, Math.PI * 2); ctx.stroke();
-        ctx.globalAlpha = 1;
-        if (avatar) {
-            ctx.save();
-            ctx.beginPath(); ctx.arc(ax, ay, avatarSize / 2, 0, Math.PI * 2); ctx.clip();
-            ctx.drawImage(avatar, ax - avatarSize / 2, ay - avatarSize / 2, avatarSize, avatarSize);
-            ctx.restore();
-        } else {
-            ctx.fillStyle = st.accent; ctx.globalAlpha = 0.7;
-            ctx.beginPath(); ctx.arc(ax, ay, avatarSize / 2, 0, Math.PI * 2); ctx.fill();
-            ctx.globalAlpha = 1;
-            ctx.fillStyle = '#fff'; ctx.font = 'bold 50px sans-serif';
-            ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-            ctx.fillText(charName ? charName.charAt(0) : '?', ax, ay);
-            ctx.textAlign = 'start'; ctx.textBaseline = 'alphabetic';
-        }
+        ctx.beginPath(); ctx.arc(ax, ay, avatarSize / 2 + 6, 0, Math.PI * 2); ctx.stroke(); ctx.globalAlpha = 1;
+        if (avatar) { ctx.save(); ctx.beginPath(); ctx.arc(ax, ay, avatarSize / 2, 0, Math.PI * 2); ctx.clip(); ctx.drawImage(avatar, ax - avatarSize / 2, ay - avatarSize / 2, avatarSize, avatarSize); ctx.restore(); }
+        else { ctx.fillStyle = st.accent; ctx.globalAlpha = 0.7; ctx.beginPath(); ctx.arc(ax, ay, avatarSize / 2, 0, Math.PI * 2); ctx.fill(); ctx.globalAlpha = 1; ctx.fillStyle = '#fff'; ctx.font = 'bold 50px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(charName ? charName.charAt(0) : '?', ax, ay); ctx.textAlign = 'start'; ctx.textBaseline = 'alphabetic'; }
         const nameX = ax + avatarSize / 2 + 28;
-        ctx.fillStyle = st.nameC;
-        ctx.font = 'bold 48px -apple-system,sans-serif';
-        ctx.fillText(charName || '未知角色', nameX, ay - 8);
-        ctx.fillStyle = st.text; ctx.globalAlpha = 0.55;
-        ctx.font = '24px -apple-system,sans-serif';
-        ctx.fillText(`— ${st.name} · 高光剪报 —`, nameX, ay + 36);
-        ctx.globalAlpha = 1;
+        ctx.fillStyle = st.nameC; ctx.font = 'bold 48px -apple-system,sans-serif'; ctx.fillText(charName || '未知角色', nameX, ay - 8);
+        ctx.fillStyle = st.text; ctx.globalAlpha = 0.55; ctx.font = '24px -apple-system,sans-serif'; ctx.fillText(`— ${st.name} · 高光剪报 —`, nameX, ay + 36); ctx.globalAlpha = 1;
         const divY = headerH;
         const lg = ctx.createLinearGradient(padding, divY, W - padding, divY);
         lg.addColorStop(0, 'rgba(0,0,0,0)'); lg.addColorStop(0.5, st.accent); lg.addColorStop(1, 'rgba(0,0,0,0)');
-        ctx.strokeStyle = lg; ctx.lineWidth = 2; ctx.globalAlpha = 0.5;
-        ctx.beginPath(); ctx.moveTo(padding, divY); ctx.lineTo(W - padding, divY); ctx.stroke();
-        ctx.globalAlpha = 1;
-        ctx.fillStyle = st.quote; ctx.globalAlpha = 0.6;
-        ctx.font = 'bold 160px "Songti SC",serif';
-        ctx.fillText('\u201C', padding - 5, divY + 110);
-        ctx.globalAlpha = 1;
-        ctx.fillStyle = st.text;
-        ctx.font = '40px "Songti SC","Noto Serif SC",serif';
+        ctx.strokeStyle = lg; ctx.lineWidth = 2; ctx.globalAlpha = 0.5; ctx.beginPath(); ctx.moveTo(padding, divY); ctx.lineTo(W - padding, divY); ctx.stroke(); ctx.globalAlpha = 1;
+        ctx.fillStyle = st.quote; ctx.globalAlpha = 0.6; ctx.font = 'bold 160px "Songti SC",serif'; ctx.fillText('\u201C', padding - 5, divY + 110); ctx.globalAlpha = 1;
+        ctx.fillStyle = st.text; ctx.font = '40px "Songti SC","Noto Serif SC",serif';
         const textTop = divY + quoteGap;
         lines.forEach((line, i) => ctx.fillText(line, padding, textTop + i * lineHeight + 40));
-        ctx.fillStyle = st.quote; ctx.globalAlpha = 0.4;
-        ctx.font = 'bold 100px "Songti SC",serif';
-        ctx.fillText('\u201D', W - padding - 80, textTop + textBlockH + 20);
-        ctx.globalAlpha = 1;
+        ctx.fillStyle = st.quote; ctx.globalAlpha = 0.4; ctx.font = 'bold 100px "Songti SC",serif'; ctx.fillText('\u201D', W - padding - 80, textTop + textBlockH + 20); ctx.globalAlpha = 1;
         const fDivY = textTop + textBlockH + 40;
         const lg2 = ctx.createLinearGradient(padding, fDivY, W - padding, fDivY);
         lg2.addColorStop(0, 'rgba(0,0,0,0)'); lg2.addColorStop(0.5, st.accent); lg2.addColorStop(1, 'rgba(0,0,0,0)');
-        ctx.strokeStyle = lg2; ctx.lineWidth = 2; ctx.globalAlpha = 0.4;
-        ctx.beginPath(); ctx.moveTo(padding, fDivY); ctx.lineTo(W - padding, fDivY); ctx.stroke();
-        ctx.globalAlpha = 1;
-        ctx.fillStyle = st.text; ctx.globalAlpha = 0.65;
-        ctx.font = 'bold 26px -apple-system,sans-serif';
-        ctx.textAlign = 'center';
+        ctx.strokeStyle = lg2; ctx.lineWidth = 2; ctx.globalAlpha = 0.4; ctx.beginPath(); ctx.moveTo(padding, fDivY); ctx.lineTo(W - padding, fDivY); ctx.stroke(); ctx.globalAlpha = 1;
+        ctx.fillStyle = st.text; ctx.globalAlpha = 0.65; ctx.font = 'bold 26px -apple-system,sans-serif'; ctx.textAlign = 'center';
         ctx.fillText('🐶🦴TOP · SillyTavern', W / 2, fDivY + 50);
-        ctx.globalAlpha = 0.45;
-        ctx.font = '20px -apple-system,sans-serif';
+        ctx.globalAlpha = 0.45; ctx.font = '20px -apple-system,sans-serif';
         const date = new Date();
         const dateStr = `${date.getFullYear()}.${String(date.getMonth()+1).padStart(2,'0')}.${String(date.getDate()).padStart(2,'0')} ${String(date.getHours()).padStart(2,'0')}:${String(date.getMinutes()).padStart(2,'0')}`;
-        ctx.fillText(dateStr, W / 2, fDivY + 80);
-        ctx.globalAlpha = 1; ctx.textAlign = 'start';
+        ctx.fillText(dateStr, W / 2, fDivY + 80); ctx.globalAlpha = 1; ctx.textAlign = 'start';
         return canvas;
     }
 
     function wrapText(ctx, text, maxWidth) {
-        const out = [];
-        const paragraphs = text.split('\n');
+        const out = [], paragraphs = text.split('\n');
         for (const para of paragraphs) {
             if (!para) { out.push(''); continue; }
             let line = '';
-            for (const ch of para) {
-                const test = line + ch;
-                if (ctx.measureText(test).width > maxWidth && line) {
-                    out.push(line); line = ch;
-                } else line = test;
-            }
+            for (const ch of para) { const test = line + ch; if (ctx.measureText(test).width > maxWidth && line) { out.push(line); line = ch; } else line = test; }
             if (line) out.push(line);
         }
         return out;
     }
-    function hashCode(s) {
-        let h = 0; for (let i = 0; i < s.length; i++) h = ((h << 5) - h) + s.charCodeAt(i) | 0;
-        return h >>> 0;
-    }
-    function mulberry32(a) {
-        return function () {
-            a |= 0; a = a + 0x6D2B79F5 | 0;
-            let t = a;
-            t = Math.imul(t ^ t >>> 15, t | 1);
-            t ^= t + Math.imul(t ^ t >>> 7, t | 61);
-            return ((t ^ t >>> 14) >>> 0) / 4294967296;
-        };
-    }
+    function hashCode(s) { let h = 0; for (let i = 0; i < s.length; i++) h = ((h << 5) - h) + s.charCodeAt(i) | 0; return h >>> 0; }
+    function mulberry32(a) { return function () { a |= 0; a = a + 0x6D2B79F5 | 0; let t = a; t = Math.imul(t ^ t >>> 15, t | 1); t ^= t + Math.imul(t ^ t >>> 7, t | 61); return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
     function saveCanvas(canvas, filename) {
         canvas.toBlob((blob) => {
             if (!blob) { showToast('❌ 生成失败'); return; }
             const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url; a.download = filename;
+            const a = document.createElement('a'); a.href = url; a.download = filename;
             document.body.appendChild(a); a.click();
             setTimeout(() => { a.remove(); URL.revokeObjectURL(url); }, 500);
             showToast('🎉 已保存到下载目录汪～', 3000);
@@ -301,33 +221,21 @@
     }
     async function generateCard(text, charName, avatarUrl, styleIdx) {
         showToast('🎨 正在绘制精美卡片汪～', 1500);
-        try {
-            const canvas = await drawPosterCard(text, charName, avatarUrl, styleIdx);
-            saveCanvas(canvas, `DogTop_Card_${Date.now()}.png`);
-        } catch (e) {
-            showToast('❌ 生成失败：' + e.message, 3500);
-        }
+        try { const canvas = await drawPosterCard(text, charName, avatarUrl, styleIdx); saveCanvas(canvas, `DogTop_Card_${Date.now()}.png`); }
+        catch (e) { showToast('❌ 生成失败：' + e.message, 3500); }
     }
 
     // ============ 微软翻译 ============
-    let edgeAuthToken = null;
-    let edgeAuthExpire = 0;
+    let edgeAuthToken = null, edgeAuthExpire = 0;
     async function getEdgeToken() {
         if (edgeAuthToken && Date.now() < edgeAuthExpire) return edgeAuthToken;
         const res = await fetch('https://edge.microsoft.com/translate/auth');
-        const tk = await res.text();
-        edgeAuthToken = tk;
-        edgeAuthExpire = Date.now() + 8 * 60 * 1000;
-        return tk;
+        const tk = await res.text(); edgeAuthToken = tk; edgeAuthExpire = Date.now() + 8 * 60 * 1000; return tk;
     }
     async function translateByEdge(text, toLang) {
         const token = await getEdgeToken();
         const url = `https://api-edge.cognitive.microsofttranslator.com/translate?api-version=3.0&to=${toLang}`;
-        const res = await fetch(url, {
-            method: 'POST',
-            headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
-            body: JSON.stringify([{ Text: text }])
-        });
+        const res = await fetch(url, { method: 'POST', headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' }, body: JSON.stringify([{ Text: text }]) });
         if (!res.ok) throw new Error('HTTP ' + res.status);
         const data = await res.json();
         return { text: data[0].translations[0].text, from: data[0].detectedLanguage ? data[0].detectedLanguage.language : 'auto' };
@@ -338,243 +246,94 @@
         if (document.querySelector('[data-dog-tr-btn]')) return;
         const btn = document.createElement('div');
         btn.setAttribute('data-dog-tr-btn', '1');
-        btn.className = 'dog-tr-btn';
+        btn.style.cssText = 'position:fixed;display:none;z-index:2147483646;background:linear-gradient(135deg,#ff6b6b,#ee5a6f);color:#fff;width:34px;height:34px;border-radius:50%;align-items:center;justify-content:center;cursor:pointer;font-size:16px;box-shadow:0 3px 10px rgba(255,107,107,0.5);user-select:none;-webkit-user-select:none;';
         btn.innerHTML = '🌐';
-        btn.style.cssText = `
-            position:fixed;display:none;z-index:2147483646;
-            background:linear-gradient(135deg,#ff6b6b,#ee5a6f);
-            color:#fff;width:34px;height:34px;border-radius:50%;
-            align-items:center;justify-content:center;
-            cursor:pointer;font-size:16px;
-            box-shadow:0 3px 10px rgba(255,107,107,0.5);
-            user-select:none;-webkit-user-select:none;`;
         document.body.appendChild(btn);
-
         let lastSel = '';
         function update() {
             if (!settings.translateEnabled) { btn.style.display = 'none'; return; }
-            const sel = window.getSelection();
-            const txt = sel ? sel.toString().trim() : '';
+            const sel = window.getSelection(); const txt = sel ? sel.toString().trim() : '';
             if (!txt || txt.length < 1) { btn.style.display = 'none'; return; }
             lastSel = txt;
             try {
                 const r = sel.getRangeAt(0).getBoundingClientRect();
-                let top = r.bottom + 8;
-                let left = r.right + 6;
+                let top = r.bottom + 8, left = r.right + 6;
                 if (left + 40 > window.innerWidth) left = r.left - 40;
                 if (top + 40 > window.innerHeight) top = r.top - 40;
-                btn.style.top = top + 'px';
-                btn.style.left = left + 'px';
-                btn.style.display = 'flex';
-                btn._txt = txt;
+                btn.style.top = top + 'px'; btn.style.left = left + 'px'; btn.style.display = 'flex'; btn._txt = txt;
             } catch (e) { btn.style.display = 'none'; }
         }
         document.addEventListener('selectionchange', () => setTimeout(update, 50));
         window.addEventListener('scroll', () => { btn.style.display = 'none'; }, true);
-
-        const fire = (e) => {
-            e.preventDefault(); e.stopPropagation();
-            const t = btn._txt || lastSel;
-            btn.style.display = 'none';
-            if (t) showTranslateBubble(t, e.clientX || 100, e.clientY || 100);
-        };
+        const fire = (e) => { e.preventDefault(); e.stopPropagation(); const t = btn._txt || lastSel; btn.style.display = 'none'; if (t) showTranslateBubble(t, e.clientX || 100, e.clientY || 100); };
         btn.addEventListener('click', fire);
         btn.addEventListener('touchend', fire, { passive: false });
     }
 
     function showTranslateBubble(text, x, y) {
         document.querySelectorAll('.dog-tr-bubble').forEach(el => el.remove());
-        const bubble = document.createElement('div');
-        bubble.className = 'dog-tr-bubble';
+        const bubble = document.createElement('div'); bubble.className = 'dog-tr-bubble';
         const top = Math.min(y + 20, window.innerHeight - 240);
         const left = Math.min(Math.max(x - 150, 10), window.innerWidth - 320);
-        bubble.style.cssText = `
-            position:fixed;top:${top}px;left:${left}px;width:300px;
-            background:rgba(255,255,255,0.98);border:2px solid #ff6b6b;
-            border-radius:12px;padding:14px;z-index:2147483646;
-            box-shadow:0 6px 24px rgba(255,107,107,0.4);
-            font-size:14px;color:#333;font-family:-apple-system,sans-serif;`;
-        bubble.innerHTML = `
-            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
-                <span style="color:#ff6b6b;font-weight:700;font-size:13px;">🌐 翻译中...</span>
-                <span class="dog-tr-close" style="cursor:pointer;color:#999;font-size:18px;line-height:1;">×</span>
-            </div>
-            <div class="dog-tr-content" style="line-height:1.6;color:#666;font-size:14px;">⚡ 微软Edge引擎调用中...</div>
-        `;
+        bubble.style.cssText = `position:fixed;top:${top}px;left:${left}px;width:300px;background:rgba(255,255,255,0.98);border:2px solid #ff6b6b;border-radius:12px;padding:14px;z-index:2147483646;box-shadow:0 6px 24px rgba(255,107,107,0.4);font-size:14px;color:#333;font-family:-apple-system,sans-serif;`;
+        bubble.innerHTML = `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;"><span style="color:#ff6b6b;font-weight:700;font-size:13px;">🌐 翻译中...</span><span class="dog-tr-close" style="cursor:pointer;color:#999;font-size:18px;line-height:1;">×</span></div><div class="dog-tr-content" style="line-height:1.6;color:#666;font-size:14px;">⚡ 微软Edge引擎调用中...</div>`;
         document.body.appendChild(bubble);
         bubble.querySelector('.dog-tr-close').onclick = () => bubble.remove();
-        const off = (e) => {
-            if (!bubble.contains(e.target)) {
-                bubble.remove();
-                document.removeEventListener('mousedown', off);
-                document.removeEventListener('touchstart', off);
-            }
-        };
-        setTimeout(() => {
-            document.addEventListener('mousedown', off);
-            document.addEventListener('touchstart', off, { passive: true });
-        }, 200);
-
+        const off = (e) => { if (!bubble.contains(e.target)) { bubble.remove(); document.removeEventListener('mousedown', off); document.removeEventListener('touchstart', off); } };
+        setTimeout(() => { document.addEventListener('mousedown', off); document.addEventListener('touchstart', off, { passive: true }); }, 200);
         const hasChinese = /[\u4e00-\u9fa5]/.test(text);
         const target = hasChinese ? 'en' : 'zh-Hans';
         translateByEdge(text, target).then(({ text: translated, from }) => {
             bubble.querySelector('span').innerHTML = `🌐 ${from} → ${target} ⚡`;
-            const c = bubble.querySelector('.dog-tr-content');
-            c.style.color = '#333';
-            c.innerHTML = `
-                <div style="margin-bottom:10px;line-height:1.6;">${translated.replace(/</g,'&lt;')}</div>
-                <div style="text-align:right;">
-                    <button class="dog-tr-copy" style="padding:5px 14px;border:1px solid #ff6b6b;background:#fff;color:#ff6b6b;border-radius:6px;cursor:pointer;font-size:12px;font-weight:600;">📋 复制</button>
-                </div>
-            `;
-            bubble.querySelector('.dog-tr-copy').onclick = (e) => {
-                navigator.clipboard.writeText(translated).then(() => {
-                    e.target.textContent = '✅ 已复制';
-                    setTimeout(() => { e.target.textContent = '📋 复制'; }, 1500);
-                }).catch(() => {});
-            };
-        }).catch(err => {
-            bubble.querySelector('.dog-tr-content').innerHTML =
-                `<div style="color:#ff6b6b;">❌ 翻译失败<br><small style="color:#999;">${err.message}</small></div>`;
-        });
+            const c = bubble.querySelector('.dog-tr-content'); c.style.color = '#333';
+            c.innerHTML = `<div style="margin-bottom:10px;line-height:1.6;">${translated.replace(/</g,'&lt;')}</div><div style="text-align:right;"><button class="dog-tr-copy" style="padding:5px 14px;border:1px solid #ff6b6b;background:#fff;color:#ff6b6b;border-radius:6px;cursor:pointer;font-size:12px;font-weight:600;">📋 复制</button></div>`;
+            bubble.querySelector('.dog-tr-copy').onclick = (e) => { navigator.clipboard.writeText(translated).then(() => { e.target.textContent = '✅ 已复制'; setTimeout(() => { e.target.textContent = '📋 复制'; }, 1500); }).catch(() => {}); };
+        }).catch(err => { bubble.querySelector('.dog-tr-content').innerHTML = `<div style="color:#ff6b6b;">❌ 翻译失败<br><small style="color:#999;">${err.message}</small></div>`; });
     }
 
     // ============ 错误码捕获 ============
     function injectErrorCatcher() {
         if (window._dogErrorCatcher) return;
         window._dogErrorCatcher = true;
-
-        const captureFromEl = (el) => {
-            try {
-                const txt = (el.innerText || el.textContent || '').trim();
-                if (txt && txt.length > 3) {
-                    lastErrorMsg = txt;
-                    lastErrorTime = Date.now();
-                }
-            } catch (e) {}
-        };
-
+        const captureFromEl = (el) => { try { const txt = (el.innerText || el.textContent || '').trim(); if (txt && txt.length > 3) { lastErrorMsg = txt; lastErrorTime = Date.now(); } } catch (e) {} };
         new MutationObserver((ms) => {
             ms.forEach(m => m.addedNodes.forEach(n => {
                 if (n.nodeType !== 1) return;
-                if (n.classList && (n.classList.contains('toast-error') || n.classList.contains('toast-warning'))) {
-                    captureFromEl(n);
-                }
-                if (n.querySelectorAll) {
-                    n.querySelectorAll('.toast-error, .toast-warning').forEach(captureFromEl);
-                }
+                if (n.classList && (n.classList.contains('toast-error') || n.classList.contains('toast-warning'))) captureFromEl(n);
+                if (n.querySelectorAll) n.querySelectorAll('.toast-error, .toast-warning').forEach(captureFromEl);
             }));
         }).observe(document.body, { childList: true, subtree: true });
-
         if (!window._dogFetchErrCaught) {
             window._dogFetchErrCaught = true;
             const origFetch = window.fetch;
             window.fetch = async function () {
                 const res = await origFetch.apply(this, arguments);
-                try {
-                    if (!res.ok && res.clone) {
-                        const c = res.clone();
-                        c.text().then(body => {
-                            if (body && body.length > 3 && body.length < 5000) {
-                                lastErrorMsg = `[HTTP ${res.status}] ${body}`;
-                                lastErrorTime = Date.now();
-                            }
-                        }).catch(() => {});
-                    }
-                } catch (e) {}
+                try { if (!res.ok && res.clone) { const c = res.clone(); c.text().then(body => { if (body && body.length > 3 && body.length < 5000) { lastErrorMsg = `[HTTP ${res.status}] ${body}`; lastErrorTime = Date.now(); } }).catch(() => {}); } } catch (e) {}
                 return res;
             };
         }
     }
 
     function showErrorTranslate() {
-        if (!lastErrorMsg) {
-            showToast('🌟 暂无错误记录\n出现红色错误后再点这里就能翻译啦', 3500);
-            return;
-        }
+        if (!lastErrorMsg) { showToast('🌟 暂无错误记录\n出现红色错误后再点这里就能翻译啦', 3500); return; }
         const ageMin = Math.floor((Date.now() - lastErrorTime) / 60000);
         const ageStr = ageMin < 1 ? '刚刚' : ageMin + '分钟前';
         const dictHit = matchErrorDict(lastErrorMsg);
-
         document.querySelectorAll('.dog-err-modal').forEach(el => el.remove());
-        const wrapper = document.createElement('div');
-        wrapper.className = 'dog-modal-wrapper dog-err-modal';
-
-        const levelColor = dictHit
-            ? (dictHit.level === 'err' ? '#ff5e5e' : dictHit.level === 'warn' ? '#ffa726' : '#42a5f5')
-            : '#9e9e9e';
-
-        const dictHtml = dictHit ? `
-            <div style="background:linear-gradient(135deg,rgba(102,126,234,0.18),rgba(118,75,162,0.18));border:1px solid rgba(130,177,255,0.35);border-radius:12px;padding:14px;margin-bottom:12px;">
-                <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
-                    <span style="background:${levelColor};color:#fff;font-size:11px;font-weight:700;padding:3px 10px;border-radius:20px;">📖 字典命中</span>
-                    <span style="color:#fff;font-weight:700;font-size:15px;">${dictHit.tag}</span>
-                </div>
-                <div style="background:rgba(0,0,0,0.25);border-radius:8px;padding:10px 12px;margin-bottom:8px;">
-                    <div style="font-size:11px;color:#a8c1ff;font-weight:700;margin-bottom:4px;">💡 说明</div>
-                    <div style="font-size:13px;color:#fff;line-height:1.6;">${dictHit.cn}</div>
-                </div>
-                <div style="background:rgba(0,0,0,0.25);border-radius:8px;padding:10px 12px;">
-                    <div style="font-size:11px;color:#80e0a8;font-weight:700;margin-bottom:4px;">🔧 解决方案</div>
-                    <div style="font-size:13px;color:#e0ffe8;line-height:1.7;white-space:pre-wrap;">${dictHit.fix}</div>
-                </div>
-            </div>
-        ` : `
-            <div style="background:rgba(255,167,38,0.12);border:1px dashed rgba(255,167,38,0.4);border-radius:10px;padding:10px 12px;margin-bottom:12px;text-align:center;">
-                <span style="color:#ffb74d;font-size:12px;">📖 字典未命中此错误，请查看下方机翻 ↓</span>
-            </div>
-        `;
-
-        wrapper.innerHTML = `
-            <div class="dog-modal-panel" style="max-width:560px;">
-                <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
-                    <span style="font-size:18px;font-weight:700;color:#fff;display:flex;align-items:center;gap:8px;">
-                        <span style="font-size:22px;">🩺</span>错误码翻译
-                    </span>
-                    <span style="font-size:11px;color:rgba(255,255,255,0.5);">${ageStr}</span>
-                </div>
-                ${dictHtml}
-                <div style="background:rgba(255,107,107,0.12);border-left:3px solid #ff6b6b;padding:10px 12px;border-radius:8px;margin-bottom:12px;max-height:140px;overflow:auto;">
-                    <div style="font-size:11px;color:#ff9999;font-weight:700;margin-bottom:4px;">📋 错误原文</div>
-                    <div style="font-size:12px;color:#ffe0e0;line-height:1.5;font-family:Consolas,Menlo,monospace;word-break:break-all;white-space:pre-wrap;">${lastErrorMsg.replace(/</g,'&lt;')}</div>
-                </div>
-                <div style="background:rgba(130,177,255,0.12);border-left:3px solid #82b1ff;padding:10px 12px;border-radius:8px;margin-bottom:14px;max-height:160px;overflow:auto;">
-                    <div style="font-size:11px;color:#a8c1ff;font-weight:700;margin-bottom:4px;">🌐 机器翻译</div>
-                    <div id="dog-err-tr" style="font-size:12px;color:#e0e8ff;line-height:1.6;">⚡ 翻译中...</div>
-                </div>
-                <div style="display:flex;gap:8px;">
-                    <button id="dog-err-copy" style="flex:1;padding:10px;border:none;border-radius:8px;background:linear-gradient(135deg,#ff6b6b,#ee5a6f);color:#fff;font-weight:700;font-size:13px;cursor:pointer;">📋 复制原文</button>
-                    <button id="dog-err-close" style="flex:1;padding:10px;border:none;border-radius:8px;background:rgba(255,255,255,0.15);color:#fff;font-weight:700;font-size:13px;cursor:pointer;">关闭</button>
-                </div>
-            </div>
-        `;
+        const wrapper = document.createElement('div'); wrapper.className = 'dog-modal-wrapper dog-err-modal';
+        const levelColor = dictHit ? (dictHit.level === 'err' ? '#ff5e5e' : '#ffa726') : '#9e9e9e';
+        const dictHtml = dictHit ? `<div style="background:linear-gradient(135deg,rgba(102,126,234,0.18),rgba(118,75,162,0.18));border:1px solid rgba(130,177,255,0.35);border-radius:12px;padding:14px;margin-bottom:12px;"><div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;"><span style="background:${levelColor};color:#fff;font-size:11px;font-weight:700;padding:3px 10px;border-radius:20px;">📖 字典命中</span><span style="color:#fff;font-weight:700;font-size:15px;">${dictHit.tag}</span></div><div style="background:rgba(0,0,0,0.25);border-radius:8px;padding:10px 12px;margin-bottom:8px;"><div style="font-size:11px;color:#a8c1ff;font-weight:700;margin-bottom:4px;">💡 说明</div><div style="font-size:13px;color:#fff;line-height:1.6;">${dictHit.cn}</div></div><div style="background:rgba(0,0,0,0.25);border-radius:8px;padding:10px 12px;"><div style="font-size:11px;color:#80e0a8;font-weight:700;margin-bottom:4px;">🔧 解决方案</div><div style="font-size:13px;color:#e0ffe8;line-height:1.7;white-space:pre-wrap;">${dictHit.fix}</div></div></div>` : `<div style="background:rgba(255,167,38,0.12);border:1px dashed rgba(255,167,38,0.4);border-radius:10px;padding:10px 12px;margin-bottom:12px;text-align:center;"><span style="color:#ffb74d;font-size:12px;">📖 字典未命中此错误，请查看下方机翻 ↓</span></div>`;
+        wrapper.innerHTML = `<div class="dog-modal-panel" style="max-width:560px;"><div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;"><span style="font-size:18px;font-weight:700;color:#fff;display:flex;align-items:center;gap:8px;"><span style="font-size:22px;">🩺</span>错误码翻译</span><span style="font-size:11px;color:rgba(255,255,255,0.5);">${ageStr}</span></div>${dictHtml}<div style="background:rgba(255,107,107,0.12);border-left:3px solid #ff6b6b;padding:10px 12px;border-radius:8px;margin-bottom:12px;max-height:140px;overflow:auto;"><div style="font-size:11px;color:#ff9999;font-weight:700;margin-bottom:4px;">📋 错误原文</div><div style="font-size:12px;color:#ffe0e0;line-height:1.5;font-family:Consolas,Menlo,monospace;word-break:break-all;white-space:pre-wrap;">${lastErrorMsg.replace(/</g,'&lt;')}</div></div><div style="background:rgba(130,177,255,0.12);border-left:3px solid #82b1ff;padding:10px 12px;border-radius:8px;margin-bottom:14px;max-height:160px;overflow:auto;"><div style="font-size:11px;color:#a8c1ff;font-weight:700;margin-bottom:4px;">🌐 机器翻译</div><div id="dog-err-tr" style="font-size:12px;color:#e0e8ff;line-height:1.6;">⚡ 翻译中...</div></div><div style="display:flex;gap:8px;"><button id="dog-err-copy" style="flex:1;padding:10px;border:none;border-radius:8px;background:linear-gradient(135deg,#ff6b6b,#ee5a6f);color:#fff;font-weight:700;font-size:13px;cursor:pointer;">📋 复制原文</button><button id="dog-err-close" style="flex:1;padding:10px;border:none;border-radius:8px;background:rgba(255,255,255,0.15);color:#fff;font-weight:700;font-size:13px;cursor:pointer;">关闭</button></div></div>`;
         document.body.appendChild(wrapper);
         wrapper.addEventListener('click', (e) => { if (e.target === wrapper) wrapper.remove(); });
         wrapper.querySelector('#dog-err-close').onclick = () => wrapper.remove();
-        wrapper.querySelector('#dog-err-copy').onclick = (e) => {
-            navigator.clipboard.writeText(lastErrorMsg).then(() => {
-                e.target.textContent = '✅ 已复制';
-                setTimeout(() => { e.target.textContent = '📋 复制原文'; }, 1500);
-            }).catch(() => {
-                const ta = document.createElement('textarea');
-                ta.value = lastErrorMsg; document.body.appendChild(ta);
-                ta.select(); document.execCommand('copy'); ta.remove();
-                e.target.textContent = '✅ 已复制';
-            });
-        };
-
+        wrapper.querySelector('#dog-err-copy').onclick = (e) => { navigator.clipboard.writeText(lastErrorMsg).then(() => { e.target.textContent = '✅ 已复制'; setTimeout(() => { e.target.textContent = '📋 复制原文'; }, 1500); }).catch(() => { const ta = document.createElement('textarea'); ta.value = lastErrorMsg; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); ta.remove(); e.target.textContent = '✅ 已复制'; }); };
         const toTranslate = lastErrorMsg.length > 1500 ? lastErrorMsg.slice(0, 1500) : lastErrorMsg;
-        translateByEdge(toTranslate, 'zh-Hans').then(({ text }) => {
-            const el = wrapper.querySelector('#dog-err-tr');
-            if (el) el.innerHTML = text.replace(/</g,'&lt;').replace(/\n/g,'<br>');
-        }).catch(err => {
-            const el = wrapper.querySelector('#dog-err-tr');
-            if (el) el.innerHTML = `<span style="color:#ff9999;">❌ 翻译失败：${err.message}</span>`;
-        });
+        translateByEdge(toTranslate, 'zh-Hans').then(({ text }) => { const el = wrapper.querySelector('#dog-err-tr'); if (el) el.innerHTML = text.replace(/</g,'&lt;').replace(/\n/g,'<br>'); }).catch(err => { const el = wrapper.querySelector('#dog-err-tr'); if (el) el.innerHTML = `<span style="color:#ff9999;">❌ 翻译失败：${err.message}</span>`; });
     }
 
     // ====================================================
-    // 🐾 悬浮球 + 玻璃拟态菜单 + 边缘吸附
+    // 🐾 悬浮球 + 吸附
     // ====================================================
     let folderEl = null;
 
@@ -582,9 +341,8 @@
         if (folderEl) { folderEl.style.display = ''; return; }
         injectFloatingMenu();
     }
-
     function hideFloatingMenu() {
-        if (folderEl) { folderEl.style.display = 'none'; }
+        if (folderEl) folderEl.style.display = 'none';
     }
 
     function injectFloatingMenu() {
@@ -593,111 +351,21 @@
             return;
         }
 
-        if (!document.getElementById('dog-folder-style-v2')) {
-            const st = document.createElement('style');
-            st.id = 'dog-folder-style-v2';
-            st.textContent = `
-                .dog-folder-v2{position:fixed;top:50%;right:0px;z-index:2147483640;font-family:-apple-system,"PingFang SC",sans-serif;transition:left 0.3s ease, right 0.3s ease, transform 0.3s ease;}
-                .dog-folder-v2.snapped-right{right:-27px !important;left:auto !important;}
-                .dog-folder-v2.snapped-left{left:-27px !important;right:auto !important;}
-                .dog-trigger-v2{
-                    width:54px;height:54px;border-radius:50%;cursor:pointer;
-                    background:radial-gradient(circle at 30% 30%,#a78bfa,#7c3aed 60%,#4c1d95);
-                    box-shadow:0 0 0 1px rgba(255,255,255,0.15) inset, 0 8px 24px rgba(124,58,237,0.55), 0 2px 8px rgba(0,0,0,0.3);
-                    display:flex;align-items:center;justify-content:center;font-size:24px;
-                    transition:transform .25s cubic-bezier(.34,1.56,.64,1), background .2s;
-                    user-select:none;-webkit-user-select:none;-webkit-tap-highlight-color:transparent;
-                    position:relative;color:#fff;
-                }
-                .dog-trigger-v2::before{
-                    content:'';position:absolute;inset:-4px;border-radius:50%;
-                    background:conic-gradient(from 0deg,#a78bfa,#f472b6,#60a5fa,#a78bfa);
-                    z-index:-1;opacity:0.5;filter:blur(6px);animation:dogSpin 4s linear infinite;
-                }
-                @keyframes dogSpin{to{transform:rotate(360deg);}}
-                .dog-trigger-v2:active{transform:scale(0.92);}
-                .dog-trigger-v2.open{background:radial-gradient(circle at 30% 30%,#fb7185,#e11d48 60%,#881337);}
-                .dog-panel-v2{
-                    position:absolute;right:64px;top:50%;
-                    width:230px;padding:8px;
-                    background:rgba(20,20,30,0.85);backdrop-filter:blur(20px) saturate(180%);
-                    -webkit-backdrop-filter:blur(20px) saturate(180%);
-                    border:1px solid rgba(255,255,255,0.12);border-radius:18px;
-                    box-shadow:0 20px 50px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.05) inset;
-                    flex-direction:column;gap:4px;
-                    transform:translateY(-50%) scale(0.85);transform-origin:right center;
-                    opacity:0;pointer-events:none;visibility:hidden;
-                    transition:opacity .2s, transform .25s cubic-bezier(.34,1.56,.64,1), visibility .2s;
-                    display:flex;
-                }
-                .dog-panel-v2.show{
-                    opacity:1;pointer-events:auto;visibility:visible;
-                    transform:translateY(-50%) scale(1);
-                }
-                .dog-panel-v2.panel-left{
-                    right:auto;left:64px;
-                    transform-origin:left center;
-                    transform:translateY(-50%) scale(0.85);
-                }
-                .dog-panel-v2.panel-left.show{
-                    transform:translateY(-50%) scale(1);
-                }
-                .dog-row-v2{display:flex;align-items:center;gap:10px;padding:9px 10px;border-radius:12px;cursor:pointer;color:#fff;transition:background .15s;}
-                .dog-row-v2:hover{background:rgba(255,255,255,0.08);}
-                .dog-row-v2:active{background:rgba(255,255,255,0.14);}
-                .dog-row-v2 .ico{width:34px;height:34px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:17px;flex-shrink:0;box-shadow:0 2px 6px rgba(0,0,0,0.3);}
-                .dog-row-v2 .meta{flex:1;min-width:0;}
-                .dog-row-v2 .title{font-size:13px;font-weight:600;line-height:1.2;display:flex;align-items:center;}
-                .dog-row-v2 .desc{font-size:10.5px;color:rgba(255,255,255,0.5);margin-top:2px;line-height:1.2;}
-                .dog-row-v2 .arrow{color:rgba(255,255,255,0.3);font-size:14px;}
-                .dog-divider-v2{height:1px;background:rgba(255,255,255,0.08);margin:4px 8px;flex-shrink:0;}
-                .dog-header-v2{padding:10px 12px 6px;display:flex;align-items:center;gap:8px;}
-                .dog-header-v2 .logo{font-size:18px;}
-                .dog-header-v2 .name{font-size:13px;font-weight:700;color:#fff;flex:1;}
-                .dog-header-v2 .ver{font-size:10px;color:rgba(255,255,255,0.4);}
-                .dog-badge-on{background:linear-gradient(135deg,#10b981,#059669);color:#fff;font-size:9px;font-weight:700;padding:2px 6px;border-radius:8px;margin-left:4px;}
-                .dog-badge-off{background:rgba(255,255,255,0.1);color:rgba(255,255,255,0.5);font-size:9px;font-weight:700;padding:2px 6px;border-radius:8px;margin-left:4px;}
-
-                .dog-modal-wrapper{position:fixed;inset:0;background:rgba(0,0,0,0.65);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);z-index:2147483645;display:flex;align-items:center;justify-content:center;padding:16px;animation:dogFadeIn .2s ease;}
-                @keyframes dogFadeIn{from{opacity:0;}to{opacity:1;}}
-                .dog-modal-panel{background:linear-gradient(135deg,rgba(40,30,80,0.98),rgba(30,20,60,0.98));border:1px solid rgba(255,255,255,0.12);border-radius:20px;padding:18px;max-width:420px;width:100%;max-height:85vh;overflow:auto;box-shadow:0 20px 60px rgba(0,0,0,0.5);}
-                .dog-poster-btn{display:flex;align-items:center;gap:12px;width:100%;padding:12px 14px;border:none;border-radius:12px;margin-bottom:8px;cursor:pointer;transition:transform .15s;font-family:-apple-system,sans-serif;}
-                .dog-poster-btn:hover{transform:translateX(2px);}
-                .dog-poster-btn:active{transform:scale(0.98);}
-                .dog-cancel-btn{width:100%;padding:11px;margin-top:6px;border:none;border-radius:10px;background:rgba(255,255,255,0.1);color:rgba(255,255,255,0.7);font-weight:600;font-size:13px;cursor:pointer;font-family:-apple-system,sans-serif;}
-                .dog-cancel-btn:hover{background:rgba(255,255,255,0.16);color:#fff;}
-                .dog-card-btn{position:fixed;z-index:2147483646;background:linear-gradient(135deg,#667eea,#764ba2);color:#fff;padding:6px 12px;border-radius:18px;font-size:12px;font-weight:600;cursor:pointer;box-shadow:0 4px 14px rgba(102,126,234,0.5);user-select:none;-webkit-user-select:none;font-family:-apple-system,sans-serif;}
-                .dog-about-card{background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.08);border-radius:10px;padding:10px 12px;margin-bottom:8px;font-size:12px;color:rgba(255,255,255,0.8);line-height:1.5;}
-            `;
-            document.head.appendChild(st);
-        }
-
         const folder = document.createElement('div');
         folder.setAttribute('data-dog-tool-folder', '1');
         folder.className = 'dog-folder-v2';
         folderEl = folder;
 
-        // 恢复位置
-        let snappedSide = 'right'; // 'left' or 'right'
+        let snappedSide = 'right';
         try {
             const saved = JSON.parse(localStorage.getItem(POS_KEY) || 'null');
             if (saved && typeof saved.top === 'number') {
                 folder.style.top = saved.top + 'px';
-                if (saved.side === 'left') {
-                    snappedSide = 'left';
-                    folder.classList.add('snapped-left');
-                    folder.classList.remove('snapped-right');
-                } else {
-                    snappedSide = 'right';
-                    folder.classList.add('snapped-right');
-                    folder.classList.remove('snapped-left');
-                }
-            } else {
-                folder.classList.add('snapped-right');
+                snappedSide = saved.side || 'right';
             }
-        } catch (e) {
-            folder.classList.add('snapped-right');
-        }
+        } catch (e) {}
+        if (snappedSide === 'left') { folder.classList.add('snapped-left'); }
+        else { folder.classList.add('snapped-right'); }
 
         const trigger = document.createElement('div');
         trigger.className = 'dog-trigger-v2';
@@ -708,199 +376,89 @@
         let isOpen = false;
 
         function row(iconBg, emoji, title, desc, onTap, badge) {
-            const r = document.createElement('div');
-            r.className = 'dog-row-v2';
-            r.innerHTML = `
-                <div class="ico" style="background:${iconBg};">${emoji}</div>
-                <div class="meta">
-                    <div class="title">${title}${badge || ''}</div>
-                    <div class="desc">${desc}</div>
-                </div>
-                <div class="arrow">›</div>
-            `;
+            const r = document.createElement('div'); r.className = 'dog-row-v2';
+            r.innerHTML = `<div class="ico" style="background:${iconBg};">${emoji}</div><div class="meta"><div class="title">${title}${badge || ''}</div><div class="desc">${desc}</div></div><div class="arrow">›</div>`;
             r.addEventListener('click', (e) => { e.stopPropagation(); onTap(); collapse(); });
             return r;
         }
 
         function updatePanelSide() {
-            if (snappedSide === 'left') {
-                panel.classList.add('panel-left');
-            } else {
-                panel.classList.remove('panel-left');
-            }
+            if (snappedSide === 'left') panel.classList.add('panel-left');
+            else panel.classList.remove('panel-left');
         }
 
         function buildPanel() {
             panel.innerHTML = '';
             updatePanelSide();
-            const hd = document.createElement('div');
-            hd.className = 'dog-header-v2';
+            const hd = document.createElement('div'); hd.className = 'dog-header-v2';
             hd.innerHTML = `<span class="logo">🐶🦴</span><span class="name">🐶🦴TOP</span><span class="ver">v1.5.0</span>`;
             panel.appendChild(hd);
-            const div1 = document.createElement('div'); div1.className = 'dog-divider-v2'; panel.appendChild(div1);
-
-            panel.appendChild(row(
-                'linear-gradient(135deg,#667eea,#764ba2)',
-                settings.soundEnabled ? '🔊' : '🔇',
-                '提示音', settings.soundEnabled ? '回复完成叮咚' : '已静音',
-                () => {
-                    settings.soundEnabled = !settings.soundEnabled; saveSettings();
-                    showToast(settings.soundEnabled ? '🔊 提示音已开启' : '🔇 提示音已关闭');
-                    if (settings.soundEnabled) playSound();
-                    syncSettingsToPanel();
-                },
-                settings.soundEnabled ? '<span class="dog-badge-on">ON</span>' : '<span class="dog-badge-off">OFF</span>'
-            ));
-            panel.appendChild(row(
-                'linear-gradient(135deg,#ff6b6b,#ee5a6f)',
-                settings.translateEnabled ? '🌐' : '🚫',
-                '划词翻译', settings.translateEnabled ? '选中文字弹出翻译' : '已禁用',
-                () => {
-                    settings.translateEnabled = !settings.translateEnabled; saveSettings();
-                    showToast(settings.translateEnabled ? '🌐 划词翻译已开启' : '🚫 划词翻译已关闭');
-                    syncSettingsToPanel();
-                },
-                settings.translateEnabled ? '<span class="dog-badge-on">ON</span>' : '<span class="dog-badge-off">OFF</span>'
-            ));
-
-            const div2 = document.createElement('div'); div2.className = 'dog-divider-v2'; panel.appendChild(div2);
-
+            panel.appendChild(Object.assign(document.createElement('div'), { className: 'dog-divider-v2' }));
+            panel.appendChild(row('linear-gradient(135deg,#667eea,#764ba2)', settings.soundEnabled ? '🔊' : '🔇', '提示音', settings.soundEnabled ? '回复完成叮咚' : '已静音', () => { settings.soundEnabled = !settings.soundEnabled; saveSettings(); showToast(settings.soundEnabled ? '🔊 提示音已开启' : '🔇 提示音已关闭'); if (settings.soundEnabled) playSound(); syncToExtPanel(); }, settings.soundEnabled ? '<span class="dog-badge-on">ON</span>' : '<span class="dog-badge-off">OFF</span>'));
+            panel.appendChild(row('linear-gradient(135deg,#ff6b6b,#ee5a6f)', settings.translateEnabled ? '🌐' : '🚫', '划词翻译', settings.translateEnabled ? '选中文字弹出翻译' : '已禁用', () => { settings.translateEnabled = !settings.translateEnabled; saveSettings(); showToast(settings.translateEnabled ? '🌐 划词翻译已开启' : '🚫 划词翻译已关闭'); syncToExtPanel(); }, settings.translateEnabled ? '<span class="dog-badge-on">ON</span>' : '<span class="dog-badge-off">OFF</span>'));
+            panel.appendChild(Object.assign(document.createElement('div'), { className: 'dog-divider-v2' }));
             panel.appendChild(row('linear-gradient(135deg,#eb3349,#f45c43)', '🩺', '错误码翻译', '字典+机翻 解析报错', showErrorTranslate));
-            panel.appendChild(row('linear-gradient(135deg,#f093fb,#f5576c)', '🔖', '生成卡片', '选中AI文字后弹出',
-                () => showToast('💡 请先选中AI消息文字\n再点击弹出的"生成卡片"', 3500)));
-
-            const div3 = document.createElement('div'); div3.className = 'dog-divider-v2'; panel.appendChild(div3);
-
-            panel.appendChild(row('linear-gradient(135deg,#fa709a,#fee140)', '🎵', '测试提示音', '试听一下叮咚声',
-                () => { if (!settings.soundEnabled) { showToast('🔇 声音已关闭'); return; } playSound(); showToast('🎵 叮咚~'); }));
+            panel.appendChild(row('linear-gradient(135deg,#f093fb,#f5576c)', '🔖', '生成卡片', '选中AI文字后弹出', () => showToast('💡 请先选中AI消息文字\n再点击弹出的"生成卡片"', 3500)));
+            panel.appendChild(Object.assign(document.createElement('div'), { className: 'dog-divider-v2' }));
+            panel.appendChild(row('linear-gradient(135deg,#fa709a,#fee140)', '🎵', '测试提示音', '试听一下叮咚声', () => { if (!settings.soundEnabled) { showToast('🔇 声音已关闭'); return; } playSound(); showToast('🎵 叮咚~'); }));
             panel.appendChild(row('linear-gradient(135deg,#11998e,#38ef7d)', 'ℹ️', '关于', '查看插件信息', showAboutDialog));
         }
 
         function expand() {
-            isOpen = true;
-            trigger.classList.add('open');
-            trigger.textContent = '✕';
+            isOpen = true; trigger.classList.add('open'); trigger.textContent = '✕';
             buildPanel();
-            requestAnimationFrame(() => {
-                requestAnimationFrame(() => panel.classList.add('show'));
-            });
+            requestAnimationFrame(() => { requestAnimationFrame(() => panel.classList.add('show')); });
         }
         function collapse() {
-            isOpen = false;
-            trigger.classList.remove('open');
-            trigger.textContent = '🐾';
+            isOpen = false; trigger.classList.remove('open'); trigger.textContent = '🐾';
             panel.classList.remove('show');
         }
-        window._dogCollapseFolder = collapse;
 
-        // 拖拽 + 吸附逻辑
-        let dragMoved = false, dragging = false;
-        let startX = 0, startY = 0, startTop = 0, startLeft = 0;
-
-        function dragStart(cx, cy) {
-            dragging = true; dragMoved = false;
-            startX = cx; startY = cy;
-            const rect = folder.getBoundingClientRect();
-            startTop = rect.top; startLeft = rect.left;
-            // 拖动时临时移除吸附类
-            folder.classList.remove('snapped-left', 'snapped-right');
-            folder.style.transition = 'none';
-        }
+        // 拖拽 + 吸附
+        let dragMoved = false, dragging = false, startX = 0, startY = 0, startTop = 0, startLeft = 0;
+        function dragStart(cx, cy) { dragging = true; dragMoved = false; startX = cx; startY = cy; const rect = folder.getBoundingClientRect(); startTop = rect.top; startLeft = rect.left; folder.classList.remove('snapped-left', 'snapped-right'); folder.style.transition = 'none'; }
         function dragMove(cx, cy) {
             if (!dragging) return;
             const dx = cx - startX, dy = cy - startY;
             if (Math.abs(dx) > 5 || Math.abs(dy) > 5) dragMoved = true;
             if (dragMoved) {
-                const w = folder.offsetWidth || 54;
                 const h = folder.offsetHeight || 54;
                 let t = Math.max(0, Math.min(window.innerHeight - h, startTop + dy));
-                let l = Math.max(-w/2, Math.min(window.innerWidth - w/2, startLeft + dx));
-                folder.style.top = t + 'px';
-                folder.style.left = l + 'px';
-                folder.style.right = 'auto';
-                folder.style.transform = 'none';
+                let l = startLeft + dx;
+                folder.style.top = t + 'px'; folder.style.left = l + 'px'; folder.style.right = 'auto'; folder.style.transform = 'none';
                 if (isOpen) collapse();
             }
         }
         function dragEnd() {
-            if (!dragging) return;
-            dragging = false;
+            if (!dragging) return; dragging = false;
             folder.style.transition = '';
             if (dragMoved) {
-                // 吸附到最近的边缘，露出50%
                 const rect = folder.getBoundingClientRect();
                 const centerX = rect.left + rect.width / 2;
                 const t = Math.max(0, Math.min(window.innerHeight - rect.height, rect.top));
-                folder.style.top = t + 'px';
-
-                if (centerX < window.innerWidth / 2) {
-                    // 吸附左侧
-                    snappedSide = 'left';
-                    folder.style.left = '';
-                    folder.style.right = '';
-                    folder.classList.add('snapped-left');
-                    folder.classList.remove('snapped-right');
-                } else {
-                    // 吸附右侧
-                    snappedSide = 'right';
-                    folder.style.left = '';
-                    folder.style.right = '';
-                    folder.classList.add('snapped-right');
-                    folder.classList.remove('snapped-left');
-                }
+                folder.style.top = t + 'px'; folder.style.left = ''; folder.style.right = ''; folder.style.transform = '';
+                if (centerX < window.innerWidth / 2) { snappedSide = 'left'; folder.classList.add('snapped-left'); folder.classList.remove('snapped-right'); }
+                else { snappedSide = 'right'; folder.classList.add('snapped-right'); folder.classList.remove('snapped-left'); }
                 try { localStorage.setItem(POS_KEY, JSON.stringify({ top: t, side: snappedSide })); } catch (e) {}
             }
         }
 
-        trigger.addEventListener('touchstart', (e) => {
-            dragStart(e.touches[0].clientX, e.touches[0].clientY);
-        }, { passive: true });
-        trigger.addEventListener('touchmove', (e) => {
-            dragMove(e.touches[0].clientX, e.touches[0].clientY);
-            if (dragMoved) e.preventDefault();
-        }, { passive: false });
-        trigger.addEventListener('touchend', () => {
-            const m = dragMoved; dragEnd();
-            if (!m) { isOpen ? collapse() : expand(); }
-        });
-        trigger.addEventListener('mousedown', (e) => {
-            if (e.button !== 0) return;
-            dragStart(e.clientX, e.clientY);
-            e.preventDefault();
-        });
+        trigger.addEventListener('touchstart', (e) => { dragStart(e.touches[0].clientX, e.touches[0].clientY); }, { passive: true });
+        trigger.addEventListener('touchmove', (e) => { dragMove(e.touches[0].clientX, e.touches[0].clientY); if (dragMoved) e.preventDefault(); }, { passive: false });
+        trigger.addEventListener('touchend', () => { const m = dragMoved; dragEnd(); if (!m) { isOpen ? collapse() : expand(); } });
+        trigger.addEventListener('mousedown', (e) => { if (e.button !== 0) return; dragStart(e.clientX, e.clientY); e.preventDefault(); });
         document.addEventListener('mousemove', (e) => { if (dragging) dragMove(e.clientX, e.clientY); });
-        document.addEventListener('mouseup', () => {
-            if (!dragging) return;
-            const m = dragMoved; dragEnd();
-            if (!m && !('ontouchstart' in window)) { isOpen ? collapse() : expand(); }
-        });
+        document.addEventListener('mouseup', () => { if (!dragging) return; const m = dragMoved; dragEnd(); if (!m && !('ontouchstart' in window)) { isOpen ? collapse() : expand(); } });
 
         folder.appendChild(trigger);
         folder.appendChild(panel);
         document.body.appendChild(folder);
-
-        // 如果设置关闭则隐藏
-        if (!settings.floatEnabled) {
-            folder.style.display = 'none';
-        }
+        if (!settings.floatEnabled) folder.style.display = 'none';
     }
 
     function showAboutDialog() {
-        const wrapper = document.createElement('div');
-        wrapper.className = 'dog-modal-wrapper';
-        wrapper.innerHTML = `
-            <div class="dog-modal-panel">
-                <div style="font-size:32px;text-align:center;margin-bottom:8px;">🐶🦴</div>
-                <div style="font-size:19px;font-weight:700;text-align:center;margin-bottom:6px;color:#fff;">🐶🦴TOP</div>
-                <div style="font-size:12px;color:rgba(255,255,255,0.55);text-align:center;margin-bottom:18px;">v1.5.0 · 跨平台增强插件</div>
-                <div class="dog-about-card"><b>🐾 玻璃拟态菜单</b><br/>可拖动 / 边缘吸附50% / 位置记忆</div>
-                <div class="dog-about-card"><b>🩺 错误码字典翻译</b><br/>40+ 内置规则 + 机翻兜底</div>
-                <div class="dog-about-card"><b>🔖 选中即生成卡片</b><br/>6种风格精美海报</div>
-                <div class="dog-about-card"><b>🌐 划词翻译</b><br/>微软Edge引擎</div>
-                <div class="dog-about-card"><b>🔊 智能AI提示音</b><br/>完成/截断/空回三种提醒</div>
-                <button class="dog-cancel-btn" id="dog-about-close">关闭</button>
-            </div>
-        `;
+        const wrapper = document.createElement('div'); wrapper.className = 'dog-modal-wrapper';
+        wrapper.innerHTML = `<div class="dog-modal-panel"><div style="font-size:32px;text-align:center;margin-bottom:8px;">🐶🦴</div><div style="font-size:19px;font-weight:700;text-align:center;margin-bottom:6px;color:#fff;">🐶🦴TOP</div><div style="font-size:12px;color:rgba(255,255,255,0.55);text-align:center;margin-bottom:18px;">v1.5.0 · 跨平台增强插件</div><div class="dog-about-card"><b>🐾 玻璃拟态菜单</b><br/>可拖动 / 边缘吸附50% / 位置记忆</div><div class="dog-about-card"><b>🩺 错误码字典翻译</b><br/>40+ 内置规则 + 机翻兜底</div><div class="dog-about-card"><b>🔖 选中即生成卡片</b><br/>6种风格精美海报</div><div class="dog-about-card"><b>🌐 划词翻译</b><br/>微软Edge引擎</div><div class="dog-about-card"><b>🔊 智能AI提示音</b><br/>完成/截断/空回三种提醒</div><button class="dog-cancel-btn" id="dog-about-close">关闭</button></div>`;
         document.body.appendChild(wrapper);
         wrapper.addEventListener('click', (e) => { if (e.target === wrapper) wrapper.remove(); });
         wrapper.querySelector('#dog-about-close').onclick = () => wrapper.remove();
@@ -915,83 +473,32 @@
         btn.textContent = '🔖 生成卡片';
         btn.style.display = 'none';
         document.body.appendChild(btn);
-
-        function findAiMes(node) {
-            let el = (node && node.nodeType === 1) ? node : (node ? node.parentElement : null);
-            while (el && el !== document.body) {
-                if (el.classList && el.classList.contains('mes')) {
-                    if (el.getAttribute('is_user') === 'true') return null;
-                    return el;
-                }
-                el = el.parentElement;
-            }
-            return null;
-        }
+        function findAiMes(node) { let el = (node && node.nodeType === 1) ? node : (node ? node.parentElement : null); while (el && el !== document.body) { if (el.classList && el.classList.contains('mes')) { if (el.getAttribute('is_user') === 'true') return null; return el; } el = el.parentElement; } return null; }
         function update() {
-            const sel = window.getSelection();
-            const txt = sel ? sel.toString().trim() : '';
+            const sel = window.getSelection(); const txt = sel ? sel.toString().trim() : '';
             if (!txt || txt.length < 2) { btn.style.display = 'none'; return; }
             const mes = findAiMes(sel.anchorNode);
             if (!mes) { btn.style.display = 'none'; return; }
-            try {
-                const r = sel.getRangeAt(0).getBoundingClientRect();
-                let top = r.bottom + 8;
-                let left = r.left + r.width / 2 - 60;
-                if (top + 50 > window.innerHeight) top = r.top - 44;
-                if (left < 8) left = 8;
-                if (left + 130 > window.innerWidth) left = window.innerWidth - 138;
-                btn.style.left = left + 'px';
-                btn.style.top = top + 'px';
-                btn.style.display = 'block';
-                btn._targetMes = mes;
-                btn._selText = txt;
-            } catch (e) { btn.style.display = 'none'; }
+            try { const r = sel.getRangeAt(0).getBoundingClientRect(); let top = r.bottom + 8, left = r.left + r.width / 2 - 60; if (top + 50 > window.innerHeight) top = r.top - 44; if (left < 8) left = 8; if (left + 130 > window.innerWidth) left = window.innerWidth - 138; btn.style.left = left + 'px'; btn.style.top = top + 'px'; btn.style.display = 'block'; btn._targetMes = mes; btn._selText = txt; } catch (e) { btn.style.display = 'none'; }
         }
         document.addEventListener('selectionchange', () => setTimeout(update, 50));
         window.addEventListener('scroll', () => { btn.style.display = 'none'; }, true);
-        const triggerFn = (e) => {
-            e.preventDefault(); e.stopPropagation();
-            const t = btn._selText || '', m = btn._targetMes;
-            if (t && m) showStyleMenu(t, m);
-        };
+        const triggerFn = (e) => { e.preventDefault(); e.stopPropagation(); const t = btn._selText || '', m = btn._targetMes; if (t && m) showStyleMenu(t, m); };
         btn.addEventListener('click', triggerFn);
         btn.addEventListener('touchend', triggerFn, { passive: false });
     }
 
     function showStyleMenu(text, mes) {
         try { window.getSelection().removeAllRanges(); } catch (e) {}
-        const btn = document.querySelector('[data-dog-card-btn]');
-        if (btn) btn.style.display = 'none';
-        const trBtn = document.querySelector('[data-dog-tr-btn]');
-        if (trBtn) trBtn.style.display = 'none';
-        try { if (document.activeElement && document.activeElement.blur) document.activeElement.blur(); } catch (e) {}
-        const old = document.getElementById('dog-poster-wrapper');
-        if (old) old.remove();
-        const wrapper = document.createElement('div');
-        wrapper.id = 'dog-poster-wrapper';
-        wrapper.className = 'dog-modal-wrapper';
-        const panelDiv = document.createElement('div');
-        panelDiv.className = 'dog-modal-panel';
-        let html = `
-            <div style="font-size:28px;text-align:center;margin-bottom:6px;">✨</div>
-            <div style="font-size:18px;font-weight:700;text-align:center;color:#fff;margin-bottom:6px;">选择卡片风格</div>
-            <div style="font-size:12px;color:rgba(255,255,255,0.55);text-align:center;margin-bottom:16px;">已选中 <span style="color:#fee140;font-weight:600;">${text.length}</span> 字</div>
-        `;
-        STYLES.forEach(s => {
-            html += `
-                <button data-style="${s.idx}" class="dog-poster-btn" style="background:${s.btnBg};color:${s.btnColor};">
-                    <span style="font-size:24px;flex-shrink:0;">${s.emoji}</span>
-                    <span style="flex:1;min-width:0;text-align:left;">
-                        <span style="display:block;font-size:14px;font-weight:700;">${s.name}</span>
-                        <span style="display:block;font-size:11px;opacity:0.75;margin-top:2px;">${s.desc}</span>
-                    </span>
-                    <span style="font-size:16px;opacity:0.5;flex-shrink:0;">›</span>
-                </button>`;
-        });
+        const btn = document.querySelector('[data-dog-card-btn]'); if (btn) btn.style.display = 'none';
+        const trBtn = document.querySelector('[data-dog-tr-btn]'); if (trBtn) trBtn.style.display = 'none';
+        const old = document.getElementById('dog-poster-wrapper'); if (old) old.remove();
+        const wrapper = document.createElement('div'); wrapper.id = 'dog-poster-wrapper'; wrapper.className = 'dog-modal-wrapper';
+        const panelDiv = document.createElement('div'); panelDiv.className = 'dog-modal-panel';
+        let html = `<div style="font-size:28px;text-align:center;margin-bottom:6px;">✨</div><div style="font-size:18px;font-weight:700;text-align:center;color:#fff;margin-bottom:6px;">选择卡片风格</div><div style="font-size:12px;color:rgba(255,255,255,0.55);text-align:center;margin-bottom:16px;">已选中 <span style="color:#fee140;font-weight:600;">${text.length}</span> 字</div>`;
+        STYLES.forEach(s => { html += `<button data-style="${s.idx}" class="dog-poster-btn" style="background:${s.btnBg};color:${s.btnColor};"><span style="font-size:24px;flex-shrink:0;">${s.emoji}</span><span style="flex:1;min-width:0;text-align:left;"><span style="display:block;font-size:14px;font-weight:700;">${s.name}</span><span style="display:block;font-size:11px;opacity:0.75;margin-top:2px;">${s.desc}</span></span><span style="font-size:16px;opacity:0.5;flex-shrink:0;">›</span></button>`; });
         html += `<button class="dog-cancel-btn" id="dog-poster-cancel">取消</button>`;
-        panelDiv.innerHTML = html;
-        wrapper.appendChild(panelDiv);
-        document.body.appendChild(wrapper);
+        panelDiv.innerHTML = html; wrapper.appendChild(panelDiv); document.body.appendChild(wrapper);
         function closeAll() { try { wrapper.remove(); } catch (e) {} }
         wrapper.addEventListener('click', (e) => { if (e.target === wrapper) closeAll(); });
         panelDiv.querySelector('#dog-poster-cancel').onclick = closeAll;
@@ -1002,8 +509,7 @@
                 const cn = nn ? (nn.innerText || nn.textContent || '').trim() : '';
                 const ai = mes.querySelector('.avatar img') || mes.querySelector('img.avatar') || mes.querySelector('img');
                 const au = ai ? (ai.src || '') : '';
-                generateCard(text, cn, au, si);
-                closeAll();
+                generateCard(text, cn, au, si); closeAll();
             };
         });
     }
@@ -1021,36 +527,14 @@
                 const res = await origFetch.apply(this, arguments);
                 if (isGen && res.body && res.clone) {
                     const c = res.clone();
-                    (async () => {
-                        try {
-                            const r = c.body.getReader();
-                            const d = new TextDecoder('utf-8');
-                            let done = false;
-                            while (!done) {
-                                const x = await r.read(); done = x.done;
-                                if (x.value) {
-                                    const ck = d.decode(x.value, { stream: true });
-                                    if (ck.includes('"finish_reason":"length"')) finishReason = 'length';
-                                    else if (ck.includes('"finish_reason":"stop"') || ck.includes('"finish_reason":"eos_token"')) finishReason = 'stop';
-                                }
-                            }
-                            window._dogFinishReason = finishReason;
-                        } catch (e) {}
-                    })();
+                    (async () => { try { const r = c.body.getReader(); const d = new TextDecoder('utf-8'); let done = false; while (!done) { const x = await r.read(); done = x.done; if (x.value) { const ck = d.decode(x.value, { stream: true }); if (ck.includes('"finish_reason":"length"')) finishReason = 'length'; else if (ck.includes('"finish_reason":"stop"') || ck.includes('"finish_reason":"eos_token"')) finishReason = 'stop'; } } window._dogFinishReason = finishReason; } catch (e) {} })();
                 }
                 return res;
             };
         }
         if (!window._dogErrorObserver) {
             window._dogErrorObserver = true;
-            new MutationObserver((ms) => {
-                ms.forEach(m => m.addedNodes.forEach(n => {
-                    if (n.nodeType === 1) {
-                        const et = (n.classList && n.classList.contains('toast-error')) ? n : (n.querySelector ? n.querySelector('.toast-error') : null);
-                        if (et && !et._dogHandled) { et._dogHandled = true; window._dogHasError = true; }
-                    }
-                }));
-            }).observe(document.body, { childList: true, subtree: true });
+            new MutationObserver((ms) => { ms.forEach(m => m.addedNodes.forEach(n => { if (n.nodeType === 1) { const et = (n.classList && n.classList.contains('toast-error')) ? n : (n.querySelector ? n.querySelector('.toast-error') : null); if (et && !et._dogHandled) { et._dogHandled = true; window._dogHasError = true; } } })); }).observe(document.body, { childList: true, subtree: true });
         }
         const tryHook = () => {
             if (!window.SillyTavern || typeof window.SillyTavern.getContext !== 'function') return false;
@@ -1059,10 +543,7 @@
             if (window._dogHooksAdded) return true;
             window._dogHooksAdded = true;
             const es = ctx.eventSource;
-            es.on('generation_started', () => {
-                manualStop = false; finishReason = 'unknown';
-                window._dogFinishReason = 'unknown'; window._dogHasError = false;
-            });
+            es.on('generation_started', () => { manualStop = false; finishReason = 'unknown'; window._dogFinishReason = 'unknown'; window._dogHasError = false; });
             es.on('generation_stopped', () => { manualStop = true; });
             es.on('generation_ended', () => {
                 Promise.resolve().then(() => {
@@ -1070,15 +551,11 @@
                     const c = window.SillyTavern.getContext();
                     const chat = (c && c.chat) ? c.chat : (window.chat || []);
                     let t = '';
-                    if (chat && chat.length) {
-                        const am = chat.filter(m => m.is_user !== true);
-                        if (am.length) t = am[am.length - 1].mes || '';
-                    }
+                    if (chat && chat.length) { const am = chat.filter(m => m.is_user !== true); if (am.length) t = am[am.length - 1].mes || ''; }
                     t = t.replace(/<[^>]+>/g, '').replace(/[\s\r\n\u200B-\u200D\uFEFF]+$/, '');
-                    const ms = manualStop === true;
-                    const r = window._dogFinishReason || 'unknown';
+                    const ms2 = manualStop === true, r = window._dogFinishReason || 'unknown';
                     if (t === '') { showToast('😾 可恶的AI！竟然空回本汪！', 3500); playSound(); return; }
-                    if (ms || r === 'length') { showToast('😭 呜呜呜！为什么截断我汪', 3500); playSound(); return; }
+                    if (ms2 || r === 'length') { showToast('😭 呜呜呜！为什么截断我汪', 3500); playSound(); return; }
                     if (r === 'stop') { showToast('🎉 回复完毕汪！', 2500); playSound(); return; }
                     const lc = t.slice(-1);
                     const ve = ['.','!','?','。','！','？','"','\u201d','\u2019','~','*',']',')','}','-','\u2026','`','_'];
@@ -1090,58 +567,93 @@
             });
             return true;
         };
-        if (!tryHook()) {
-            const ob = new MutationObserver(() => { if (tryHook()) ob.disconnect(); });
-            ob.observe(document, { childList: true, subtree: true });
-        }
+        if (!tryHook()) { const ob = new MutationObserver(() => { if (tryHook()) ob.disconnect(); }); ob.observe(document, { childList: true, subtree: true }); }
     }
 
     // ====================================================
-    // 🎛️ 扩展面板设置同步
+    // 🎛️ 注入扩展面板设置（关键！让插件在扩展列表中显示）
     // ====================================================
-    function syncSettingsToPanel() {
-        try {
+    function injectExtensionPanel() {
+        // 找到 SillyTavern 的扩展设置容器
+        // ST 有两个可能的容器: #extensions_settings 和 #extensions_settings2
+        // 第三方扩展通常注入到 #extensions_settings2（右侧列）
+        const targetContainer = document.getElementById('extensions_settings2')
+            || document.getElementById('extensions_settings');
+
+        if (!targetContainer) {
+            console.warn('[DogTop] 找不到 extensions_settings 容器，延迟重试...');
+            setTimeout(injectExtensionPanel, 1000);
+            return;
+        }
+
+        // 检查是否已注入
+        if (document.getElementById('dog_top_settings')) return;
+
+        const settingsHtml = `
+        <div id="dog_top_settings" class="dog-top-ext-settings">
+            <div class="inline-drawer">
+                <div class="inline-drawer-toggle inline-drawer-header">
+                    <b>🐶🦴TOP</b>
+                    <div class="inline-drawer-icon fa-solid fa-circle-chevron-down down"></div>
+                </div>
+                <div class="inline-drawer-content" style="font-size:14px;">
+                    <div style="padding:12px;">
+                        <div style="margin-bottom:14px;">
+                            <label class="checkbox_label" style="display:flex;align-items:center;gap:8px;cursor:pointer;margin-bottom:8px;">
+                                <input id="dog_top_float_toggle" type="checkbox" ${settings.floatEnabled ? 'checked' : ''} />
+                                <span>🐾 显示悬浮球</span>
+                            </label>
+                            <small style="color:var(--SmartThemeQuoteColor);margin-left:26px;">开启后在屏幕边缘显示工具悬浮球</small>
+                        </div>
+                        <div style="margin-bottom:14px;">
+                            <label class="checkbox_label" style="display:flex;align-items:center;gap:8px;cursor:pointer;margin-bottom:8px;">
+                                <input id="dog_top_sound_toggle" type="checkbox" ${settings.soundEnabled ? 'checked' : ''} />
+                                <span>🔊 AI回复提示音</span>
+                            </label>
+                            <small style="color:var(--SmartThemeQuoteColor);margin-left:26px;">AI回复完成时播放叮咚提示音</small>
+                        </div>
+                        <div style="margin-bottom:14px;">
+                            <label class="checkbox_label" style="display:flex;align-items:center;gap:8px;cursor:pointer;margin-bottom:8px;">
+                                <input id="dog_top_translate_toggle" type="checkbox" ${settings.translateEnabled ? 'checked' : ''} />
+                                <span>🌐 划词翻译</span>
+                            </label>
+                            <small style="color:var(--SmartThemeQuoteColor);margin-left:26px;">选中文字后出现翻译按钮（微软Edge引擎）</small>
+                        </div>
+                        <hr style="border:none;border-top:1px solid var(--SmartThemeBorderColor);margin:14px 0;" />
+                        <div style="color:var(--SmartThemeQuoteColor);font-size:12px;line-height:1.6;">
+                            <p style="margin:0 0 4px;">🐶🦴TOP v1.5.0</p>
+                            <p style="margin:0 0 4px;">功能：悬浮工具球 / 选中生成卡片 / 错误码翻译 / 划词翻译 / AI提示音</p>
+                            <p style="margin:0;">悬浮球支持拖动 + 边缘自动吸附（露出50%）</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>`;
+
+        targetContainer.insertAdjacentHTML('beforeend', settingsHtml);
+
+        // 绑定事件
+        setTimeout(() => {
             const floatToggle = document.getElementById('dog_top_float_toggle');
             const soundToggle = document.getElementById('dog_top_sound_toggle');
             const translateToggle = document.getElementById('dog_top_translate_toggle');
-            if (floatToggle) floatToggle.checked = settings.floatEnabled;
-            if (soundToggle) soundToggle.checked = settings.soundEnabled;
-            if (translateToggle) translateToggle.checked = settings.translateEnabled;
-        } catch (e) {}
-    }
 
-    function bindSettingsPanel() {
-        const waitForPanel = setInterval(() => {
-            const floatToggle = document.getElementById('dog_top_float_toggle');
-            if (!floatToggle) return;
-            clearInterval(waitForPanel);
-
-            // 同步当前状态
-            syncSettingsToPanel();
-
-            // 绑定事件
-            floatToggle.addEventListener('change', (e) => {
-                settings.floatEnabled = e.target.checked;
-                saveSettings();
-                if (settings.floatEnabled) {
-                    showFloatingMenu();
-                    showToast('🐾 悬浮球已开启');
-                } else {
-                    hideFloatingMenu();
-                    showToast('🐾 悬浮球已关闭');
-                }
-            });
-
-            const soundToggle = document.getElementById('dog_top_sound_toggle');
+            if (floatToggle) {
+                floatToggle.addEventListener('change', (e) => {
+                    settings.floatEnabled = e.target.checked;
+                    saveSettings();
+                    if (settings.floatEnabled) { showFloatingMenu(); showToast('🐾 悬浮球已开启'); }
+                    else { hideFloatingMenu(); showToast('🐾 悬浮球已关闭'); }
+                });
+            }
             if (soundToggle) {
                 soundToggle.addEventListener('change', (e) => {
                     settings.soundEnabled = e.target.checked;
                     saveSettings();
                     showToast(settings.soundEnabled ? '🔊 提示音已开启' : '🔇 提示音已关闭');
+                    if (settings.soundEnabled) playSound();
                 });
             }
-
-            const translateToggle = document.getElementById('dog_top_translate_toggle');
             if (translateToggle) {
                 translateToggle.addEventListener('change', (e) => {
                     settings.translateEnabled = e.target.checked;
@@ -1149,30 +661,54 @@
                     showToast(settings.translateEnabled ? '🌐 划词翻译已开启' : '🚫 划词翻译已关闭');
                 });
             }
-        }, 500);
+        }, 100);
+    }
 
-        // 30秒后停止轮询
-        setTimeout(() => clearInterval(waitForPanel), 30000);
+    // 从悬浮球菜单同步状态到扩展面板
+    function syncToExtPanel() {
+        try {
+            const f = document.getElementById('dog_top_float_toggle');
+            const s = document.getElementById('dog_top_sound_toggle');
+            const t = document.getElementById('dog_top_translate_toggle');
+            if (f) f.checked = settings.floatEnabled;
+            if (s) s.checked = settings.soundEnabled;
+            if (t) t.checked = settings.translateEnabled;
+        } catch (e) {}
     }
 
     // ====================================================
-    // 🚀 初始化
+    // 🚀 初始化入口
     // ====================================================
     function init() {
         console.log(`[${PLUGIN_NAME}] 🐶🦴TOP v1.5.0 启动中...`);
+
+        // 注入扩展面板（关键步骤）
+        injectExtensionPanel();
+
+        // 注入悬浮球
         injectFloatingMenu();
+
+        // 注入选中卡片
         injectSelectionCard();
+
+        // 注入划词翻译
         injectTranslateUI();
+
+        // 注入错误捕获
         injectErrorCatcher();
+
+        // 绑定AI生成事件
         attachGenerationHooks();
-        bindSettingsPanel();
+
         console.log(`[${PLUGIN_NAME}] ✅ 启动成功！`);
     }
 
+    // 等待 DOM 就绪后初始化
     if (typeof jQuery !== 'undefined') {
-        jQuery(() => setTimeout(init, 500));
+        jQuery(() => setTimeout(init, 800));
     } else {
-        if (document.readyState === 'complete' || document.readyState === 'interactive') setTimeout(init, 800);
-        else document.addEventListener('DOMContentLoaded', () => setTimeout(init, 800));
+        if (document.readyState === 'complete' || document.readyState === 'interactive') setTimeout(init, 1000);
+        else document.addEventListener('DOMContentLoaded', () => setTimeout(init, 1000));
     }
+
 })();
