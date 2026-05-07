@@ -1,14 +1,11 @@
-/* 🐶🦴TOP v1.5.1 */
+/* 🐶🦴TOP v1.5.2 */
 
-/* ===== 悬浮球容器 ===== */
 .dog-folder-v2 {
     position: fixed;
     z-index: 2147483640;
     font-family: -apple-system, "PingFang SC", sans-serif;
-    /* left 和 top 由 JS 控制 */
 }
 
-/* ===== 悬浮球按钮 ===== */
 .dog-trigger-v2 {
     width: 54px;
     height: 54px;
@@ -42,7 +39,6 @@
 .dog-trigger-v2:active { transform: scale(0.92); }
 .dog-trigger-v2.open { background: radial-gradient(circle at 30% 30%, #fb7185, #e11d48 60%, #881337); }
 
-/* ===== 弹出菜单 ===== */
 .dog-panel-v2 {
     position: absolute;
     top: 50%;
@@ -63,7 +59,6 @@
     display: flex;
 }
 
-/* 右侧吸附时 → 面板在左边弹出 */
 .dog-panel-v2.panel-right {
     right: 64px;
     left: auto;
@@ -77,7 +72,6 @@
     transform: translateY(-50%) scale(1);
 }
 
-/* 左侧吸附时 → 面板在右边弹出 */
 .dog-panel-v2.panel-left {
     left: 64px;
     right: auto;
@@ -91,7 +85,6 @@
     transform: translateY(-50%) scale(1);
 }
 
-/* ===== 菜单行 ===== */
 .dog-row-v2 { display: flex; align-items: center; gap: 10px; padding: 9px 10px; border-radius: 12px; cursor: pointer; color: #fff; transition: background 0.15s; }
 .dog-row-v2:hover { background: rgba(255,255,255,0.08); }
 .dog-row-v2:active { background: rgba(255,255,255,0.14); }
@@ -110,10 +103,34 @@
 .dog-badge-on { background: linear-gradient(135deg,#10b981,#059669); color: #fff; font-size: 9px; font-weight: 700; padding: 2px 6px; border-radius: 8px; margin-left: 4px; }
 .dog-badge-off { background: rgba(255,255,255,0.1); color: rgba(255,255,255,0.5); font-size: 9px; font-weight: 700; padding: 2px 6px; border-radius: 8px; margin-left: 4px; }
 
-/* ===== 模态 ===== */
-.dog-modal-wrapper { position: fixed; inset: 0; background: rgba(0,0,0,0.65); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); z-index: 2147483645; display: flex; align-items: center; justify-content: center; padding: 16px; animation: dogFadeIn 0.2s ease; }
+.dog-modal-wrapper {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.65);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    z-index: 2147483645;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px 16px;
+    animation: dogFadeIn 0.2s ease;
+    overflow-y: auto;
+}
 @keyframes dogFadeIn { from { opacity: 0; } to { opacity: 1; } }
-.dog-modal-panel { background: linear-gradient(135deg, rgba(40,30,80,0.98), rgba(30,20,60,0.98)); border: 1px solid rgba(255,255,255,0.12); border-radius: 20px; padding: 18px; max-width: 420px; width: 100%; max-height: 85vh; overflow: auto; box-shadow: 0 20px 60px rgba(0,0,0,0.5); }
+
+.dog-modal-panel {
+    background: linear-gradient(135deg, rgba(40,30,80,0.98), rgba(30,20,60,0.98));
+    border: 1px solid rgba(255,255,255,0.12);
+    border-radius: 20px;
+    padding: 18px;
+    max-width: 420px;
+    width: 100%;
+    max-height: 75vh;
+    overflow-y: auto;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+    margin: auto;
+}
 
 .dog-poster-btn { display: flex; align-items: center; gap: 12px; width: 100%; padding: 12px 14px; border: none; border-radius: 12px; margin-bottom: 8px; cursor: pointer; transition: transform 0.15s; font-family: -apple-system, sans-serif; }
 .dog-poster-btn:hover { transform: translateX(2px); }
@@ -127,6 +144,5 @@
 .dog-about-card { background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.08); border-radius: 10px; padding: 10px 12px; margin-bottom: 8px; font-size: 12px; color: rgba(255,255,255,0.8); line-height: 1.5; }
 .dog-about-card b { color: #fee140; font-weight: 700; }
 
-/* ===== 扩展面板 ===== */
 #dog_top_settings .inline-drawer-header { cursor: pointer; }
 #dog_top_settings .checkbox_label input[type="checkbox"] { width: 16px; height: 16px; cursor: pointer; }
