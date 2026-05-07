@@ -1,9 +1,9 @@
 /**
- * 🐶 小狗酒馆 Lite v1.4.0
- * 重大升级：
- *  - 长截图改用 modern-screenshot（SVG foreignObject）
- *  - 一次性截全 iframe / Shadow DOM / 现代 CSS（oklch/color-mix）
- *  - html2canvas 自动兜底 + iframe 预渲染兜底
+ * 🐶 小狗酒馆 Lite v1.4.1
+ * 修复：
+ *  - iframe 永远预渲染（解决学生证等HTML块糊掉）
+ *  - 截图期间所有 dog-* UI 元素 display:none（解决紫色脚印残影）
+ *  - 等待字体/图片加载完成
  */
 
 (function () {
@@ -13,7 +13,6 @@
     const LS_KEY = 'dog_tavern_lite_settings';
     const POS_KEY = 'dog_tavern_folder_pos';
 
-    // 截图引擎 CDN：优先 modern-screenshot，兜底 html2canvas
     const SHOT_CDNS = [
         { type: 'modern', url: 'https://cdn.jsdelivr.net/npm/modern-screenshot@4.4.39/dist/index.umd.js' },
         { type: 'modern', url: 'https://unpkg.com/modern-screenshot@4.4.39/dist/index.umd.js' },
@@ -580,7 +579,7 @@
     }
 
     // ====================================================
-    // 📸 长截图 v2 — modern-screenshot 优先 / html2canvas 兜底
+    // 📸 长截图 v3 — 修复版
     // ====================================================
     function loadScriptOnce(url, timeoutMs = 12000) {
         return new Promise((resolve, reject) => {
@@ -595,7 +594,7 @@
         });
     }
 
-    let _shotEngine = null;  // 'modern' | 'h2c' | null
+    let _shotEngine = null;
     async function loadShotEngine() {
         if (_shotEngine === 'modern' && window.modernScreenshot) return 'modern';
         if (_shotEngine === 'h2c' && window.html2canvas) return 'h2c';
@@ -608,7 +607,7 @@
                 console.log('[DogTavern] 尝试加载截图引擎:', cdn.type, cdn.url);
                 await loadScriptOnce(cdn.url);
                 if (cdn.type === 'modern' && window.modernScreenshot) {
-                    console.log('[DogTavern] ✨ modern-screenshot 加载成功（一次性截全iframe/ShadowDOM）');
+                    console.log('[DogTavern] ✨ modern-screenshot 加载成功');
                     _shotEngine = 'modern';
                     return 'modern';
                 }
@@ -625,7 +624,7 @@
         throw new Error('所有截图引擎 CDN 均失败' + (lastErr ? '（' + lastErr.message + '）' : ''));
     }
 
-    // 把 html2canvas 不认识的现代 CSS 色彩函数替换成普通色（仅 h2c 兜底用）
+    // 把不认识的现代 CSS 替换成普通色（h2c 兜底用）
     function sanitizeModernCssInClone(clonedDoc) {
         try {
             const re = /\b(oklch|oklab|color-mix|lab|lch|hwb)\s*\([^)]*\)/gi;
@@ -644,28 +643,78 @@
         } catch (e) { console.warn('[DogTavern] sanitize 失败:', e); }
     }
 
-    // h2c 兜底专用：iframe 预渲染
-    async function snapshotIframeWithH2c(iframe, h2c) {
+    // 通用 iframe 预渲染（modern / h2c 都能用）
+    async function snapshotIframe(iframe, engineType) {
         try {
             const doc = iframe.contentDocument;
             if (!doc || !doc.body) return null;
+
+            // 等 iframe 内字体加载
+            try {
+                if (doc.fonts && doc.fonts.ready) {
+                    await Promise.race([
+                        doc.fonts.ready,
+                        new Promise(r => setTimeout(r, 1500))
+                    ]);
+                }
+            } catch (e) {}
+
+            // 等 iframe 内图片加载
+            try {
+                const imgs = Array.from(doc.querySelectorAll('img'));
+                await Promise.all(imgs.map(img => {
+                    if (img.complete && img.naturalWidth > 0) return Promise.resolve();
+                    return new Promise(r => {
+                        const t = setTimeout(r, 2000);
+                        img.addEventListener('load', () => { clearTimeout(t); r(); }, { once: true });
+                        img.addEventListener('error', () => { clearTimeout(t); r(); }, { once: true });
+                    });
+                }));
+            } catch (e) {}
+
             const w = iframe.offsetWidth || iframe.clientWidth || doc.body.scrollWidth;
-            const h = Math.max(doc.body.scrollHeight, doc.documentElement.scrollHeight, iframe.offsetHeight || 0);
+            const h = Math.max(
+                doc.body.scrollHeight,
+                doc.documentElement.scrollHeight,
+                iframe.offsetHeight || 0
+            );
             if (w < 5 || h < 5) return null;
+
             let bg;
             try {
                 bg = iframe.contentWindow.getComputedStyle(doc.body).backgroundColor;
                 if (!bg || bg === 'rgba(0, 0, 0, 0)' || bg === 'transparent') bg = null;
             } catch (e) { bg = null; }
-            const canvas = await h2c(doc.body, {
-                backgroundColor: bg, useCORS: true, allowTaint: true, logging: false,
-                imageTimeout: 8000, scale: Math.min(window.devicePixelRatio || 1, 2),
-                width: w, height: h, windowWidth: w, windowHeight: h,
-                onclone: (cd) => sanitizeModernCssInClone(cd)
-            });
-            return { canvas, w, h };
+
+            const scale = Math.min(window.devicePixelRatio || 1, 2);
+
+            let canvas;
+            if (engineType === 'modern' && window.modernScreenshot) {
+                canvas = await window.modernScreenshot.domToCanvas(doc.documentElement, {
+                    backgroundColor: bg,
+                    scale: scale,
+                    width: w,
+                    height: h,
+                    fetch: { requestInit: { cache: 'force-cache' } }
+                });
+            } else if (window.html2canvas) {
+                canvas = await window.html2canvas(doc.body, {
+                    backgroundColor: bg,
+                    useCORS: true,
+                    allowTaint: true,
+                    logging: false,
+                    imageTimeout: 8000,
+                    scale: scale,
+                    width: w,
+                    height: h,
+                    windowWidth: w,
+                    windowHeight: h,
+                    onclone: (cd) => sanitizeModernCssInClone(cd)
+                });
+            }
+            return canvas ? { canvas, w, h } : null;
         } catch (e) {
-            console.warn('[DogTavern] iframe 预渲染失败:', e);
+            console.warn('[DogTavern] iframe 渲染失败:', e);
             return null;
         }
     }
@@ -709,14 +758,28 @@
             }
         });
 
-        // 隐藏所有 fixed 浮层
+        // 🎯 修复1：彻底 display:none 自己的 UI（不只是 visibility）
+        const dogUiHidden = [];
+        document.querySelectorAll(
+            '[data-dog-tool-folder],[data-dog-card-btn],[data-dog-tr-btn],#dog-toast,.dog-tr-bubble,.dog-modal-wrapper,.dog-folder-v2'
+        ).forEach(el => {
+            dogUiHidden.push({ el, display: el.style.display });
+            el.style.display = 'none';
+        });
+
+        // 隐藏其它所有 fixed 浮层
         const floatingEls = [];
         document.querySelectorAll('body *').forEach(el => {
             try {
+                if (el.hasAttribute && (
+                    el.hasAttribute('data-dog-tool-folder') ||
+                    el.hasAttribute('data-dog-card-btn') ||
+                    el.hasAttribute('data-dog-tr-btn')
+                )) return;
                 const cs = getComputedStyle(el);
                 if (cs.position === 'fixed' && cs.visibility !== 'hidden' && el.offsetParent !== null) {
-                    floatingEls.push({ el, vis: el.style.visibility });
-                    el.style.visibility = 'hidden';
+                    floatingEls.push({ el, display: el.style.display });
+                    el.style.display = 'none';
                 }
             } catch (e) {}
         });
@@ -728,41 +791,55 @@
         chat.style.height = 'auto';
         chat.style.maxHeight = 'none';
 
-        // —— 仅 h2c 兜底模式时才需要 iframe 预渲染替换 ——
+        // 🎯 修复2：永远预渲染 iframe（不管什么引擎）
         const iframeReplacements = [];
-        if (engineType === 'h2c') {
-            const iframes = Array.from(chat.querySelectorAll('iframe'));
-            if (iframes.length > 0) {
-                showToast(`🖼️ 兜底模式：预渲染 ${iframes.length} 个HTML块...`, 2500);
-                for (const ifr of iframes) {
-                    const snap = await snapshotIframeWithH2c(ifr, window.html2canvas);
-                    if (!snap) continue;
-                    try {
-                        const dataUrl = snap.canvas.toDataURL('image/png');
-                        const img = document.createElement('img');
-                        img.src = dataUrl;
-                        const cs = getComputedStyle(ifr);
-                        img.style.cssText = `display:block;width:${ifr.offsetWidth || snap.w}px;height:${ifr.offsetHeight || snap.h}px;max-width:100%;border:none;margin:${cs.margin};border-radius:${cs.borderRadius};`;
-                        const parent = ifr.parentNode;
-                        const nextSibling = ifr.nextSibling;
-                        parent.replaceChild(img, ifr);
-                        iframeReplacements.push({ iframe: ifr, placeholder: img, parent, nextSibling });
-                    } catch (e) { console.warn('iframe替换失败', e); }
+        const iframes = Array.from(chat.querySelectorAll('iframe'));
+        if (iframes.length > 0) {
+            showToast(`🖼️ 渲染 ${iframes.length} 个HTML块（请等候）...`, 3000);
+            for (const ifr of iframes) {
+                const snap = await snapshotIframe(ifr, engineType);
+                if (!snap) {
+                    console.warn('[DogTavern] 跳过一个 iframe');
+                    continue;
+                }
+                try {
+                    const dataUrl = snap.canvas.toDataURL('image/png');
+                    const img = document.createElement('img');
+                    img.src = dataUrl;
+                    const cs = getComputedStyle(ifr);
+                    img.style.cssText = `display:block;width:${ifr.offsetWidth || snap.w}px;height:${ifr.offsetHeight || snap.h}px;max-width:100%;border:none;margin:${cs.margin};border-radius:${cs.borderRadius};`;
+                    const parent = ifr.parentNode;
+                    const nextSibling = ifr.nextSibling;
+                    parent.replaceChild(img, ifr);
+                    iframeReplacements.push({ iframe: ifr, placeholder: img, parent, nextSibling });
+                } catch (e) {
+                    console.warn('iframe 替换失败', e);
                 }
             }
         }
 
+        // 强制 reflow + 等渲染稳定
+        void chat.offsetHeight;
         await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
-        await new Promise(r => setTimeout(r, 400));
+        await new Promise(r => setTimeout(r, 500));
 
-        showToast(engineType === 'modern' ? '✨ 一次性渲染中（含iframe）...' : '📸 渲染中...', 2500);
+        // 等主文档字体加载
+        try {
+            if (document.fonts && document.fonts.ready) {
+                await Promise.race([
+                    document.fonts.ready,
+                    new Promise(r => setTimeout(r, 1500))
+                ]);
+            }
+        } catch (e) {}
+
+        showToast(engineType === 'modern' ? '✨ 渲染中...' : '📸 渲染中...', 2500);
 
         let canvas;
         try {
             const bg = getComputedStyle(document.body).backgroundColor || '#1a1a2e';
 
             if (engineType === 'modern') {
-                // ===== modern-screenshot =====
                 canvas = await window.modernScreenshot.domToCanvas(chat, {
                     backgroundColor: bg,
                     scale: Math.min(window.devicePixelRatio || 1, 2),
@@ -770,18 +847,24 @@
                     height: chat.scrollHeight,
                     fetch: { requestInit: { cache: 'force-cache' } },
                     filter: (node) => {
-                        if (!node || !node.getAttribute) return true;
+                        if (!node) return true;
+                        if (node.nodeType === 3) return true;
+                        if (!node.getAttribute) return true;
                         if (node.hasAttribute && (
                             node.hasAttribute('data-dog-tool-folder') ||
                             node.hasAttribute('data-dog-card-btn') ||
                             node.hasAttribute('data-dog-tr-btn')
                         )) return false;
                         if (node.id === 'dog-toast') return false;
+                        if (node.classList && (
+                            node.classList.contains('dog-tr-bubble') ||
+                            node.classList.contains('dog-modal-wrapper') ||
+                            node.classList.contains('dog-folder-v2')
+                        )) return false;
                         return true;
                     }
                 });
             } else {
-                // ===== html2canvas 兜底 =====
                 canvas = await window.html2canvas(chat, {
                     backgroundColor: bg,
                     useCORS: true, allowTaint: true, logging: false,
@@ -794,7 +877,7 @@
                     scrollX: 0, scrollY: 0,
                     onclone: (clonedDoc) => {
                         sanitizeModernCssInClone(clonedDoc);
-                        clonedDoc.querySelectorAll('[data-dog-tool-folder],[data-dog-card-btn],[data-dog-tr-btn],#dog-toast,.dog-tr-bubble,.dog-modal-wrapper').forEach(n => n.remove());
+                        clonedDoc.querySelectorAll('[data-dog-tool-folder],[data-dog-card-btn],[data-dog-tr-btn],#dog-toast,.dog-tr-bubble,.dog-modal-wrapper,.dog-folder-v2').forEach(n => n.remove());
                         const cChat = clonedDoc.getElementById('chat');
                         if (cChat) {
                             cChat.style.overflow = 'visible';
@@ -808,6 +891,10 @@
                         if (el.hasAttribute('data-dog-card-btn')) return true;
                         if (el.hasAttribute('data-dog-tr-btn')) return true;
                         if (el.id === 'dog-toast') return true;
+                        if (el.classList && (
+                            el.classList.contains('dog-folder-v2') ||
+                            el.classList.contains('dog-tr-bubble')
+                        )) return true;
                         return false;
                     }
                 });
@@ -816,7 +903,7 @@
             console.error('[DogTavern] 渲染失败:', e);
             showToast('❌ 渲染失败：' + (e.message || e) + '\n（详情见控制台）', 5000);
         } finally {
-            // 还原 iframe（如果有替换）
+            // 还原 iframe
             iframeReplacements.forEach(({ iframe, placeholder, parent, nextSibling }) => {
                 try {
                     if (placeholder.parentNode) {
@@ -826,13 +913,14 @@
                     } else {
                         parent.appendChild(iframe);
                     }
-                } catch (e) { console.warn('iframe还原失败:', e); }
+                } catch (e) { console.warn('iframe 还原失败:', e); }
             });
             hiddenList.forEach(({ el, display }) => { el.style.display = display; });
             chat.style.overflow = oldOverflow;
             chat.style.height = oldHeight;
             chat.style.maxHeight = oldMaxHeight;
-            floatingEls.forEach(({ el, vis }) => { el.style.visibility = vis; });
+            floatingEls.forEach(({ el, display }) => { el.style.display = display; });
+            dogUiHidden.forEach(({ el, display }) => { el.style.display = display; });
         }
 
         if (!canvas) return;
@@ -878,7 +966,7 @@
             <div style="font-size:28px;text-align:center;margin-bottom:6px;">📸</div>
             <div style="font-size:18px;font-weight:700;text-align:center;color:#fff;margin-bottom:6px;">长截图范围</div>
             <div style="font-size:11px;color:rgba(255,255,255,0.55);text-align:center;margin-bottom:6px;">当前共 <b style="color:#fee140;">${total}</b> 楼（楼层号 0 ~ ${maxIdx}）</div>
-            <div style="font-size:10px;color:rgba(130,177,255,0.7);text-align:center;margin-bottom:14px;">✨ 一次性渲染：iframe / 自定义CSS / 现代色彩 全收录</div>
+            <div style="font-size:10px;color:rgba(130,177,255,0.7);text-align:center;margin-bottom:14px;">✨ HTML块自动预渲染 · 浮窗自动隐藏</div>
             <div style="background:rgba(255,255,255,0.08);border-radius:10px;padding:12px;margin-bottom:12px;">
                 <div style="font-size:13px;color:#fee140;font-weight:700;margin-bottom:8px;">🎯 自定义楼层</div>
                 <div style="display:flex;align-items:center;gap:6px;">
@@ -1046,7 +1134,7 @@
             panel.innerHTML = '';
             const hd = document.createElement('div');
             hd.className = 'dog-header-v2';
-            hd.innerHTML = `<span class="logo">🐶🦴</span><span class="name">小狗酒馆 Lite</span><span class="ver">v1.4.0</span>`;
+            hd.innerHTML = `<span class="logo">🐶🦴</span><span class="name">小狗酒馆 Lite</span><span class="ver">v1.4.1</span>`;
             panel.appendChild(hd);
             const div1 = document.createElement('div'); div1.className = 'dog-divider-v2'; panel.appendChild(div1);
 
@@ -1075,7 +1163,7 @@
             const div2 = document.createElement('div'); div2.className = 'dog-divider-v2'; panel.appendChild(div2);
 
             panel.appendChild(row('linear-gradient(135deg,#eb3349,#f45c43)', '🩺', '错误码翻译', '字典+机翻 解析报错', showErrorTranslate));
-            panel.appendChild(row('linear-gradient(135deg,#43cea2,#185a9d)', '📸', '长截图', '一次性截全iframe/自定义CSS', showLongShotMenu));
+            panel.appendChild(row('linear-gradient(135deg,#43cea2,#185a9d)', '📸', '长截图', 'HTML块自动预渲染', showLongShotMenu));
             panel.appendChild(row('linear-gradient(135deg,#f093fb,#f5576c)', '🔖', '生成卡片', '选中AI文字后弹出',
                 () => showToast('💡 请先选中AI消息文字\n再点击弹出的"生成卡片"', 3500)));
 
@@ -1172,8 +1260,8 @@
             <div class="dog-modal-panel">
                 <div style="font-size:32px;text-align:center;margin-bottom:8px;">🐶🦴</div>
                 <div style="font-size:19px;font-weight:700;text-align:center;margin-bottom:6px;color:#fff;">小狗酒馆 Lite</div>
-                <div style="font-size:12px;color:rgba(255,255,255,0.55);text-align:center;margin-bottom:18px;">v1.4.0 · 跨平台增强插件</div>
-                <div class="dog-about-card"><b>✨ 一次性长截图</b><br/>modern-screenshot 引擎<br/>iframe/Shadow DOM/oklch全支持</div>
+                <div style="font-size:12px;color:rgba(255,255,255,0.55);text-align:center;margin-bottom:18px;">v1.4.1 · 跨平台增强插件</div>
+                <div class="dog-about-card"><b>✨ 长截图修复版</b><br/>iframe 永远预渲染<br/>浮窗自动 display:none</div>
                 <div class="dog-about-card"><b>🐾 玻璃拟态菜单</b><br/>可拖动 / 位置记忆</div>
                 <div class="dog-about-card"><b>🩺 错误码字典翻译</b><br/>40+ 内置规则 + 机翻兜底</div>
                 <div class="dog-about-card"><b>🔖 选中即生成卡片</b><br/>6种风格精美海报</div>
@@ -1378,7 +1466,7 @@
     }
 
     function init() {
-        console.log(`[${PLUGIN_NAME}] 🐶 v1.4.0 启动中...`);
+        console.log(`[${PLUGIN_NAME}] 🐶 v1.4.1 启动中...`);
         injectFloatingMenu();
         injectSelectionCard();
         injectTranslateUI();
